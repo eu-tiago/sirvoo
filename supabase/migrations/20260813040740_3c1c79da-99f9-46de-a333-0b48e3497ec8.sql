@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.users_share_church_any(uuid, uuid) TO authenticated;

@@ -1,0 +1,276 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Sirvo Design System — "Task" inspired palette
+  Royal navy + lavender + neon green + coral pink
+  All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Page surfaces */
+    --background: 240 33% 97%;          /* near-white with cool tint */
+    --foreground: 240 60% 18%;          /* royal navy ink */
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 60% 18%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 60% 18%;
+
+    /* Brand: royal navy / indigo */
+    --primary: 240 55% 28%;             /* deep royal */
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 240 60% 40%;
+
+    /* Lavender — used for soft cards / inner surfaces */
+    --secondary: 235 75% 78%;
+    --secondary-foreground: 240 60% 18%;
+
+    /* Coral / pink accent */
+    --accent: 348 100% 65%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Neon green — success / highlights / "today" */
+    --success: 152 75% 48%;
+    --success-foreground: 0 0% 100%;
+
+    --muted: 235 30% 95%;
+    --muted-foreground: 240 15% 45%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 235 30% 90%;
+    --input: 235 30% 90%;
+    --ring: 240 55% 28%;
+
+    --radius: 1.5rem;                    /* big rounded corners */
+
+    /* Sirvo brand tokens (semantic) */
+    --sirvo-navy: 240 55% 28%;
+    --sirvo-navy-deep: 240 60% 18%;
+    --sirvo-lavender: 235 75% 78%;
+    --sirvo-lavender-soft: 235 80% 88%;
+    --sirvo-green: 152 75% 48%;
+    --sirvo-pink: 348 100% 65%;
+    --sirvo-cream: 240 33% 97%;
+
+    /* Gradients */
+    --sirvo-gradient: linear-gradient(135deg, hsl(240 55% 28%) 0%, hsl(240 60% 40%) 100%);
+    --sirvo-gradient-soft: linear-gradient(135deg, hsl(235 80% 88%) 0%, hsl(235 75% 78%) 100%);
+    --sirvo-gradient-pink: linear-gradient(135deg, hsl(348 100% 65%) 0%, hsl(348 100% 75%) 100%);
+    --sirvo-gradient-green: linear-gradient(135deg, hsl(152 75% 48%) 0%, hsl(152 80% 58%) 100%);
+
+    /* Shadows */
+    --sirvo-shadow: 0 8px 24px -8px hsl(240 55% 28% / 0.18);
+    --sirvo-shadow-lg: 0 20px 50px -12px hsl(240 55% 28% / 0.28);
+    --sirvo-shadow-soft: 0 4px 16px -4px hsl(240 55% 28% / 0.10);
+
+    /* Sidebar — clean light surface */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 60% 18%;
+    --sidebar-primary: 240 55% 28%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 235 30% 95%;
+    --sidebar-accent-foreground: 240 55% 28%;
+    --sidebar-border: 235 30% 90%;
+    --sidebar-ring: 240 55% 28%;
+  }
+
+  .dark {
+    --background: 240 60% 10%;
+    --foreground: 235 80% 92%;
+
+    --card: 240 55% 14%;
+    --card-foreground: 235 80% 92%;
+
+    --popover: 240 55% 14%;
+    --popover-foreground: 235 80% 92%;
+
+    --primary: 235 75% 78%;
+    --primary-foreground: 240 60% 14%;
+    --primary-glow: 235 80% 88%;
+
+    --secondary: 240 50% 22%;
+    --secondary-foreground: 235 80% 92%;
+
+    --accent: 348 100% 65%;
+    --accent-foreground: 0 0% 100%;
+
+    --success: 152 75% 48%;
+    --success-foreground: 0 0% 100%;
+
+    --muted: 240 40% 18%;
+    --muted-foreground: 235 30% 70%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 40% 22%;
+    --input: 240 40% 22%;
+    --ring: 235 75% 78%;
+
+    --sirvo-gradient: linear-gradient(135deg, hsl(240 50% 22%) 0%, hsl(240 55% 32%) 100%);
+    --sirvo-gradient-soft: linear-gradient(135deg, hsl(240 50% 22%) 0%, hsl(240 40% 30%) 100%);
+
+    --sidebar-background: 240 60% 8%;
+    --sidebar-foreground: 235 80% 92%;
+    --sidebar-primary: 235 75% 78%;
+    --sidebar-primary-foreground: 240 60% 14%;
+    --sidebar-accent: 240 50% 18%;
+    --sidebar-accent-foreground: 235 80% 92%;
+    --sidebar-border: 240 40% 22%;
+    --sidebar-ring: 235 75% 78%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    /* Safe-area handled per-component (header/bottom nav) so sticky/fixed
+       positioning works correctly in standalone PWA on iOS notch devices. */
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  /* Section labels (small caps style) */
+  .label-caps {
+    @apply text-[11px] font-bold uppercase tracking-[0.12em] text-foreground;
+  }
+}
+
+@layer components {
+  /* Brand utilities */
+  .sirvo-gradient-bg { background: var(--sirvo-gradient); }
+  .sirvo-gradient-text {
+    background: var(--sirvo-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Cards */
+  .sirvo-card {
+    @apply bg-card rounded-3xl p-5 border border-border/40;
+    box-shadow: var(--sirvo-shadow-soft);
+  }
+
+  .sirvo-card-lavender {
+    background: hsl(var(--sirvo-lavender) / 0.35);
+    @apply rounded-3xl p-5 border border-transparent;
+  }
+
+  .sirvo-card-navy {
+    background: hsl(var(--sirvo-navy));
+    color: hsl(var(--primary-foreground));
+    @apply rounded-3xl p-6 relative overflow-hidden;
+  }
+
+  .sirvo-card-gradient {
+    background: var(--sirvo-gradient-soft);
+    @apply rounded-3xl p-5 border border-transparent;
+  }
+
+  /* Buttons */
+  .sirvo-btn-primary {
+    background: hsl(var(--sirvo-navy));
+    @apply text-primary-foreground font-bold uppercase tracking-wide px-6 py-3 rounded-2xl transition-all duration-300;
+    box-shadow: var(--sirvo-shadow);
+  }
+  .sirvo-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--sirvo-shadow-lg);
+  }
+
+  .sirvo-btn-accent {
+    background: hsl(var(--accent));
+    @apply text-accent-foreground font-bold uppercase tracking-wide px-6 py-3 rounded-2xl transition-all duration-300;
+    box-shadow: 0 8px 24px -8px hsl(var(--accent) / 0.5);
+  }
+
+  .sirvo-btn-success {
+    background: hsl(var(--success));
+    @apply text-success-foreground font-bold uppercase tracking-wide px-6 py-3 rounded-2xl transition-all duration-300;
+    box-shadow: 0 8px 24px -8px hsl(var(--success) / 0.5);
+  }
+
+  /* Inputs */
+  .sirvo-input {
+    @apply bg-card border border-border/60 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all duration-200;
+    box-shadow: var(--sirvo-shadow-soft);
+  }
+
+  /* Decorative blobs (used in hero / dashboard headers) */
+  .sirvo-blob-pink {
+    @apply absolute rounded-full pointer-events-none;
+    background: hsl(var(--accent));
+  }
+  .sirvo-blob-green {
+    @apply absolute rounded-full pointer-events-none;
+    background: hsl(var(--success));
+  }
+
+  /* Timeline left border (used for project task list) */
+  .sirvo-timeline {
+    @apply relative pl-5;
+  }
+  .sirvo-timeline::before {
+    content: "";
+    @apply absolute left-2 top-2 bottom-2 w-px bg-foreground/30;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in   { animation: fadeIn 0.5s ease-out forwards; }
+  .animate-slide-up  { animation: slideUp 0.5s ease-out forwards; }
+  .animate-scale-in  { animation: scaleIn 0.3s ease-out forwards; }
+  .animate-pulse-soft{ animation: pulseSoft 2s ease-in-out infinite; }
+
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pl-safe { padding-left: env(safe-area-inset-left, 0px); }
+  .pr-safe { padding-right: env(safe-area-inset-right, 0px); }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes pulseSoft {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.7; }
+  }
+
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
+  .stagger-5 { animation-delay: 0.5s; }
+}
