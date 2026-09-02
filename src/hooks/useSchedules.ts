@@ -61,7 +61,7 @@ export function useSchedules(churchId: string | null) {
       const transformedSchedules: Schedule[] = [];
       const todayStr = new Date().toISOString().split("T")[0];
 
-      // 1. Busca todas as atribuições do usuário logado (Agora buscando o recurring_id)
+      // 1. Busca todas as atribuições do usuário logado resolvendo a ambiguidade de FK com ministry_roles
       const { data: assignmentsData, error: assignError } = await supabase
         .from("schedule_assignments")
         .select(
@@ -75,7 +75,7 @@ export function useSchedules(churchId: string | null) {
           substitution_status,
           substitution_reason,
           recurring_id,
-          ministry_roles:role_id (name)
+          ministry_roles!schedule_assignments_role_id_fkey (name)
         `,
         )
         .eq("user_id", userId);
@@ -119,16 +119,13 @@ export function useSchedules(churchId: string | null) {
 
         for (const assignment of assignmentsData) {
           const sched = scheduleMap.get(assignment.schedule_id);
-          const isGeneratedFixed = !!assignment.recurring_id; // Verifica se veio de uma regra fixa
+          const isGeneratedFixed = !!assignment.recurring_id;
 
-          // PLANO B (Fallback): Se não tiver 'sched', mas for escala fixa, NÃO joga no lixo!
           if (!sched && !isGeneratedFixed) continue;
 
-          // Evita cards repetidos da mesma escala/função para o mesmo usuário
           const dedupeKey = `${sched?.id || assignment.schedule_id}|${assignment.role_id || ""}`;
           if (seenAssignmentKeys.has(dedupeKey)) continue;
           seenAssignmentKeys.add(dedupeKey);
-
 
           const ministryId = sched?.ministry_id || "";
           const eventId = sched?.event_id || assignment.schedule_id;
@@ -155,7 +152,6 @@ export function useSchedules(churchId: string | null) {
             startTime,
           );
 
-          // O PULO DO GATO: Se for gerado de escala fixa, força a exibição para não cair no filtro de "pendente"!
           const finalUserStatus = isGeneratedFixed ? "confirmed" : assignment.status || "pending";
 
           transformedSchedules.push({
@@ -187,10 +183,10 @@ export function useSchedules(churchId: string | null) {
         }
       }
 
-      // 2. Busca as Regras de Escalas Fixas (LENDO DA TABELA CORRETA DO PLANEJAMENTO)
+      // 2. Busca as Regras de Escalas Fixas
       try {
         const { data: recurringData } = (await supabase
-          .from("recurring_assignments") // Corrigido para buscar da mesma tabela que a tela de planejamento salva!
+          .from("recurring_assignments")
           .select("*")
           .eq("church_id", churchId)
           .eq("user_id", userId)) as { data: any[] | null };
@@ -214,14 +210,11 @@ export function useSchedules(churchId: string | null) {
           const seenRecurringKeys = new Set<string>();
 
           for (const rec of recurringData) {
-            // Se a regra fixa já gerou escalas reais, não duplica o card genérico
             if (coveredRecurringIds.has(rec.id)) continue;
-            // Evita repetir a mesma regra (mesmo ministério/dia/semana/função)
             const recKey = `${rec.ministry_id}|${rec.weekday}|${rec.occurrence}|${rec.role_id || ""}`;
             if (seenRecurringKeys.has(recKey)) continue;
             seenRecurringKeys.add(recKey);
 
-            // Só exibe a próxima ocorrência futura da regra fixa
             const nextDate = nextRecurrenceDate(Number(rec.weekday), Number(rec.occurrence));
             if (!nextDate) continue;
             const nextIso = format(nextDate, "yyyy-MM-dd");
@@ -275,7 +268,7 @@ export function useSchedules(churchId: string | null) {
         return (a.eventDate || "").localeCompare(b.eventDate || "");
       });
 
-      // 4. Garantia final: nenhum card repetido (mesmo evento + ministério + função)
+      // 4. Garantia final: nenhum card repetido
       const uniqueSchedules: Schedule[] = [];
       const seenFinal = new Set<string>();
       for (const s of transformedSchedules) {
