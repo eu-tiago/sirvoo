@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useChurchId } from "@/hooks/useChurchId";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useMinistries } from "@/hooks/useMinistries";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 
@@ -76,6 +77,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
   const { churchId } = useChurchId();
   const { createCheckout } = useSubscription();
   const { ministries } = useMinistries(churchId);
+  const { isLeader } = useUserRole();
 
   const getNextPlan = () => {
     if (maxUsers <= 3) return { plan: "basic" as const, name: "Básico", users: 10, price: "R$29,90" };
@@ -257,11 +259,11 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
       const { data, error } = await supabase.functions.invoke("send-invite", {
         body: {
           email: email.trim(),
-          role,
+          role: isLeader ? "volunteer" : role,
           churchId,
           churchName,
           inviterName,
-          ministryId: ministryId || undefined,
+          ministryId: ministryId && ministryId !== "none" ? ministryId : undefined,
         },
       });
 
@@ -404,9 +406,9 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="volunteer">Voluntário</SelectItem>
-                      <SelectItem value="ministry_leader">Líder de Ministério</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="volunteer">Voluntário</SelectItem>
+                        {!isLeader && <SelectItem value="ministry_leader">Líder de Ministério</SelectItem>}
+                        {!isLeader && <SelectItem value="admin">Administrador</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>

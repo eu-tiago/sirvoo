@@ -45,8 +45,25 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated");
     logStep("User authenticated", { userId: user.id });
 
-    const { email, role, churchId, churchName, inviterName, ministryId, resend }: InviteRequest = await req.json();
-    logStep("Invite request received", { email, role, churchId, ministryId });
+    const { email, role: requestedRole, churchId, churchName, inviterName, ministryId, resend }: InviteRequest = await req.json();
+    logStep("Invite request received", { email, role: requestedRole, churchId, ministryId });
+
+    const { data: membership, error: membershipError } = await supabaseClient
+      .from("church_members")
+      .select("role")
+      .eq("church_id", churchId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (membershipError) throw new Error("Erro ao verificar permissão na igreja");
+    if (!membership || !["admin", "ministry_leader"].includes(membership.role)) {
+      throw new Error("Você não tem permissão para convidar membros desta igreja");
+    }
+
+    const role = membership.role === "ministry_leader" ? "volunteer" : requestedRole;
+    if (!["admin", "ministry_leader", "volunteer"].includes(role)) {
+      throw new Error("Função de convite inválida");
+    }
 
     // Check if user can add more users (subscription limit) — super admin bypasses
     const isSuperAdmin = (user.email || "").toLowerCase() === "tiagotalmud@gmail.com";
