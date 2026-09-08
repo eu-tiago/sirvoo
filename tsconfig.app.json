@@ -27,6 +27,8 @@
     "useDefineForClassFields": true
   },
   "include": [
-    "src"
+    "src",
+    "supabase/**/*.d.ts",
+    "supabase/functions/**/*.ts"
   ]
 }
