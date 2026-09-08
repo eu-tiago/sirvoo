@@ -202,7 +202,6 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // Disparo via Resend API
         const resendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
