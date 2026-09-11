@@ -312,11 +312,13 @@ export function CreateScheduleDialog({
           .from("events")
           .insert({
             title,
+            description: location || null,
+            event_type: "service",
             event_date: eventDate,
             start_time: slot.time,
+            is_recurring: false,
             church_id: churchId,
             created_by: user.id,
-            description: location,
           })
           .select()
           .single();
