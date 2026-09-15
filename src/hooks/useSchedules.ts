@@ -38,7 +38,7 @@ interface Schedule {
   isRecurring?: boolean;
 }
 
-export function useSchedules(churchId: string | null) {
+export function useSchedules(churchId: string | null, includeAllChurchSchedules = false) {
   const { toast } = useToast();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,12 +82,96 @@ export function useSchedules(churchId: string | null) {
 
       if (assignError) throw assignError;
 
+      if (includeAllChurchSchedules) {
+        const { data: churchMinistries, error: ministriesError } = await supabase
+          .from("ministries")
+          .select("id, name, color")
+          .eq("church_id", churchId);
+        if (ministriesError) throw ministriesError;
+
+        const ministryIds = (churchMinistries || []).map((ministry) => ministry.id);
+        if (ministryIds.length > 0) {
+          const { data: churchSchedules, error: schedulesError } = await supabase
+            .from("schedules")
+            .select("id, status, ministry_id, event_id")
+            .in("ministry_id", ministryIds);
+          if (schedulesError) throw schedulesError;
+
+          const scheduleIds = (churchSchedules || []).map((schedule) => schedule.id);
+          const { data: churchAssignments, error: assignmentsError } = scheduleIds.length
+            ? await supabase
+                .from("schedule_assignments")
+                .select(
+                  `id, schedule_id, user_id, status, role_id, original_user_id, substitution_status, substitution_reason,
+                  ministry_roles!schedule_assignments_role_id_fkey (name)`,
+                )
+                .in("schedule_id", scheduleIds)
+            : { data: [], error: null };
+          if (assignmentsError) throw assignmentsError;
+
+          const eventIds = Array.from(new Set((churchSchedules || []).map((schedule) => schedule.event_id)));
+          const { data: churchEvents, error: eventsError } = eventIds.length
+            ? await supabase
+                .from("events")
+                .select("id, title, event_date, start_time, description")
+                .in("id", eventIds)
+            : { data: [], error: null };
+          if (eventsError) throw eventsError;
+
+          const ministryMap = new Map((churchMinistries || []).map((ministry) => [ministry.id, ministry]));
+          const eventMap = new Map((churchEvents || []).map((event) => [event.id, event]));
+          const assignmentsBySchedule = new Map<string, any[]>();
+          for (const assignment of churchAssignments || []) {
+            const current = assignmentsBySchedule.get(assignment.schedule_id) || [];
+            current.push(assignment);
+            assignmentsBySchedule.set(assignment.schedule_id, current);
+          }
+
+          for (const schedule of churchSchedules || []) {
+            const ministry = ministryMap.get(schedule.ministry_id);
+            const event = eventMap.get(schedule.event_id);
+            if (!ministry || !event) continue;
+
+            const assignments = assignmentsBySchedule.get(schedule.id) || [];
+            const currentUserAssignment = assignments.find((assignment) => assignment.user_id === userId);
+            const team = assignments.length
+              ? assignments.map((assignment) => ({
+                  id: assignment.id,
+                  name: "Voluntário",
+                  role: (assignment.ministry_roles as any)?.name || "Voluntário",
+                  status: assignment.status || "pending",
+                  userId: assignment.user_id,
+                }))
+              : [{ id: `schedule-${schedule.id}`, name: "Sem atribuições", role: "", status: "pending" }];
+
+            transformedSchedules.push({
+              id: schedule.id,
+              title: smartTitle(event.title, getWeekdayFromDateString(event.event_date), event.start_time),
+              date: format(parseISO(event.event_date), "dd MMM yyyy", { locale: ptBR }),
+              time: event.start_time.slice(0, 5),
+              location: event.description || "",
+              ministry: ministry.name,
+              ministryId: ministry.id,
+              ministryColor: ministry.color || "#5B7BFF",
+              team,
+              userRole: (currentUserAssignment?.ministry_roles as any)?.name,
+              userAssignmentId: currentUserAssignment?.id,
+              userStatus: currentUserAssignment?.status || null,
+              status: schedule.status || "published",
+              eventId: event.id,
+              eventDate: event.event_date,
+              isRecurring: false,
+            });
+          }
+        }
+      }
+
       // Regras fixas que já geraram atribuições reais (para não duplicar os cards)
       const coveredRecurringIds = new Set(
         (assignmentsData || []).map((a: any) => a.recurring_id).filter(Boolean) as string[],
       );
 
-      if (assignmentsData && assignmentsData.length > 0) {
+      if (!includeAllChurchSchedules && assignmentsData && assignmentsData.length > 0) {
         const scheduleIds = Array.from(new Set(assignmentsData.map((a: any) => a.schedule_id).filter(Boolean)));
 
         const { data: schedsData } = await supabase
