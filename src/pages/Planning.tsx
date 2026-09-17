@@ -49,7 +49,7 @@ const Planning = () => {
     deleteSchedule,
     publishSchedules,
     remindPending,
-  } = useSchedules(churchId);
+  } = useSchedules(churchId, true);
 
   const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
   const [showDetail, setShowDetail] = useState(false);
