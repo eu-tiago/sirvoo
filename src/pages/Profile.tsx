@@ -10,7 +10,7 @@ import { ScheduleHistoryDialog } from "@/components/profile/ScheduleHistoryDialo
 import { NotificationSettings } from "@/components/notifications/NotificationSettings";
 import { ReminderSettings } from "@/components/profile/ReminderSettings";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, ChevronRight, LogOut, HelpCircle, FileText } from "lucide-react";
+import { Calendar, Clock, ChevronRight, LogOut, HelpCircle, FileText, KeyRound } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 // 1. Importe o useChurch do seu contexto global
@@ -64,6 +64,11 @@ const Profile = () => {
       icon: HelpCircle, 
       label: "Ajuda e Suporte", 
       onClick: () => navigate("/ajuda") 
+    },
+    {
+      icon: KeyRound,
+      label: "Alterar senha",
+      onClick: () => navigate("/change-password", { state: { forced: false } }),
     },
   ];
 

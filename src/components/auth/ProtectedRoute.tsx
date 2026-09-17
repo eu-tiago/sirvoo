@@ -13,6 +13,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const navigate = useNavigate();
   const [checkingChurch, setCheckingChurch] = useState(true);
   const [hasChurch, setHasChurch] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -33,6 +34,18 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           .eq("user_id", user.id)
           .limit(1)
           .maybeSingle();
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("must_change_password")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profile?.must_change_password) {
+          setMustChangePassword(true);
+          navigate("/change-password", { replace: true });
+          return;
+        }
 
         if (membership) {
           setHasChurch(true);
@@ -60,7 +73,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!user || !hasChurch) {
+  if (!user || !hasChurch || mustChangePassword) {
     return null;
   }
 

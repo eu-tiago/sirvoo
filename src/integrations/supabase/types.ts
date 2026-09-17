@@ -715,6 +715,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+            must_change_password: boolean
           phone: string | null
           reminders_enabled: boolean
           updated_at: string
@@ -725,6 +726,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          must_change_password?: boolean
           phone?: string | null
           reminders_enabled?: boolean
           updated_at?: string
@@ -735,6 +737,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          must_change_password?: boolean
           phone?: string | null
           reminders_enabled?: boolean
           updated_at?: string

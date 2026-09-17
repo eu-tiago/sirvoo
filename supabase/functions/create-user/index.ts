@@ -157,6 +157,17 @@ serve(async (req) => {
       throw memberError;
     }
 
+    // Accounts created with this generated password must choose a personal password on first access.
+    const { error: passwordFlagError } = await supabaseAdmin
+      .from("profiles")
+      .update({ must_change_password: true })
+      .eq("id", newUser.user.id);
+
+    if (passwordFlagError) {
+      logStep("Error marking temporary password", { error: passwordFlagError });
+      throw passwordFlagError;
+    }
+
     // Update user_roles
     const { error: roleError } = await supabaseAdmin
       .from("user_roles")

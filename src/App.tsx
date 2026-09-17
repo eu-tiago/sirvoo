@@ -11,6 +11,7 @@ import Landing from "./pages/Landing";
 import Pricing from "./pages/Pricing";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import ChangePassword from "./pages/ChangePassword";
 import AcceptInvite from "./pages/AcceptInvite";
 import Dashboard from "./pages/Dashboard";
 import Schedules from "./pages/Schedules";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/change-password" element={<ChangePassword />} />
               <Route path="/convite/:token" element={<AcceptInvite />} />
               <Route path="/install" element={<Install />} />
               <Route path="/termos" element={<Terms />} />
