@@ -105,7 +105,7 @@ export function CheckInDialog({ group, open, onOpenChange }: CheckInDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Check-in — {group?.title}</DialogTitle>
           <DialogDescription>

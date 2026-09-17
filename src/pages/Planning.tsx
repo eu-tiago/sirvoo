@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { GroupedScheduleCard, groupSchedules, ScheduleGroup } from "@/components/schedules/GroupedScheduleCard";
@@ -72,6 +72,7 @@ const Planning = () => {
   } | null>(null);
   const [filter, setFilter] = useState<string>("Todas");
   const [statusFilter, setStatusFilter] = useState<"upcoming" | "drafts" | "past">("upcoming");
+  const [createFixed, setCreateFixed] = useState<(() => void) | null>(null);
 
   // ARQUITETURA: Escalas Fixas como padrão prioritário ao abrir a página
   const [mainTab, setMainTab] = useState<"schedules" | "recurring">("recurring");
@@ -84,6 +85,10 @@ const Planning = () => {
 
   // CORREÇÃO APLICADA AQUI: Pegando a lista real do banco em vez das escalas apenas
   const ministries = ["Todas", ...Array.from(new Set(allMinistries.map((m) => m.name)))];
+
+  const handleCreateReady = useCallback((handler: () => void) => {
+    setCreateFixed(() => handler);
+  }, []);
 
   const statusFiltered = schedules.filter((s) => {
     const isPast = s.eventDate ? s.eventDate < todayStr : false;
@@ -216,13 +221,19 @@ const Planning = () => {
               </Button>
               <Button
                 onClick={() => {
+                  if (mainTab === "recurring") {
+                    createFixed?.();
+                    return;
+                  }
                   setCreatePrefill(undefined);
                   setShowCreate(true);
                 }}
+                disabled={mainTab === "recurring" && !createFixed}
                 size={isMobile ? "icon" : "default"}
+                title={mainTab === "recurring" ? "Gerar escala fixa do mês selecionado" : "Nova escala de evento"}
               >
                 <Plus className="w-5 h-5" />
-                {!isMobile && <span className="ml-2">Nova Escala</span>}
+                {!isMobile && <span className="ml-2">{mainTab === "recurring" ? "Gerar escala fixa" : "Nova escala"}</span>}
               </Button>
             </div>
           </div>
@@ -303,6 +314,7 @@ const Planning = () => {
               ministryFilter={filter}
               weekday={recurringWeekday}
               onWeekdayChange={setRecurringWeekday}
+              onCreateReady={handleCreateReady}
             />
           </div>
         )}

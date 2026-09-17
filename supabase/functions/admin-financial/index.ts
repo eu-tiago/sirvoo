@@ -12,12 +12,15 @@ const SUPERADMIN_EMAIL = "tiagotalmud@gmail.com";
 const PRODUCT_IDS = {
   basic: "prod_TZyl2yFHQOUsym",
   standard: "prod_TZyqLTOzuAEdFV",
+  premium: Deno.env.get("STRIPE_PRODUCT_PREMIUM") ?? "",
+  unlimited: Deno.env.get("STRIPE_PRODUCT_UNLIMITED") ?? "",
 };
 
 const PLAN_LIMITS: Record<string, number> = {
   free: 3,
   basic: 10,
   standard: 30,
+  premium: 50,
   unlimited: 999999,
 };
 
@@ -25,6 +28,8 @@ const PLAN_PRICES: Record<string, number> = {
   free: 0,
   basic: 29.9,
   standard: 59.9,
+  premium: 99.9,
+  unlimited: 149.9,
 };
 
 const log = (s: string, d?: any) =>
@@ -68,8 +73,11 @@ serve(async (req) => {
     }
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY not set");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    const stripe = stripeKey ? new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" }) : null;
+    const requireStripe = () => {
+      if (!stripe) throw new Error("STRIPE_SECRET_KEY não configurada");
+      return stripe;
+    };
 
     const body = await req.json().catch(() => ({}));
     const action = body.action ?? "overview";
@@ -101,6 +109,7 @@ serve(async (req) => {
     }
 
     if (action === "sync_church") {
+      const stripeClient = requireStripe();
       const { churchId } = body;
       if (!churchId) throw new Error("churchId required");
       const { data: members } = await supabase
@@ -117,7 +126,7 @@ serve(async (req) => {
         .single();
       if (!profile?.email) throw new Error("Admin email not found");
 
-      const customers = await stripe.customers.list({ email: profile.email, limit: 1 });
+      const customers = await stripeClient.customers.list({ email: profile.email, limit: 1 });
       if (!customers.data.length) {
         await supabase
           .from("church_subscriptions")
@@ -129,12 +138,12 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const subs = await stripe.subscriptions.list({
+      const subs = await stripeClient.subscriptions.list({
         customer: customers.data[0].id,
         status: "all",
         limit: 1,
       });
-      let plan: "free" | "basic" | "standard" = "free";
+      let plan: "free" | "basic" | "standard" | "premium" | "unlimited" = "free";
       let subEnd: string | null = null;
       let subId: string | null = null;
       let status = "canceled";
@@ -143,6 +152,8 @@ serve(async (req) => {
         const pid = s.items.data[0].price.product as string;
         if (pid === PRODUCT_IDS.basic) plan = "basic";
         else if (pid === PRODUCT_IDS.standard) plan = "standard";
+        else if (pid === PRODUCT_IDS.premium) plan = "premium";
+        else if (pid === PRODUCT_IDS.unlimited) plan = "unlimited";
         subEnd = tsToISO((s as any).current_period_end);
         subId = s.id;
         status = s.status;
@@ -165,6 +176,7 @@ serve(async (req) => {
     }
 
     if (action === "list_invoices") {
+      const stripeClient = requireStripe();
       const { churchId } = body;
       const { data: sub } = await supabase
         .from("church_subscriptions")
@@ -176,7 +188,7 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const invoices = await stripe.invoices.list({
+      const invoices = await stripeClient.invoices.list({
         customer: sub.stripe_customer_id,
         limit: 30,
       });
@@ -204,9 +216,10 @@ serve(async (req) => {
     }
 
     if (action === "list_payments") {
+      const stripeClient = requireStripe();
       // All recent payment intents / charges across the account
       const { limit = 50 } = body;
-      const charges = await stripe.charges.list({ limit: Math.min(limit, 100) });
+      const charges = await stripeClient.charges.list({ limit: Math.min(limit, 100) });
       // Map customer -> church
       const { data: subs } = await supabase
         .from("church_subscriptions")
@@ -317,7 +330,7 @@ serve(async (req) => {
 
     // Limit live calls — fetch up to 50 customers in parallel
     const toFetch = customerIds.slice(0, 50);
-    await Promise.all(
+    if (stripe) await Promise.all(
       toFetch.map(async (cid) => {
         try {
           const [liveSubs, invs] = await Promise.all([
@@ -381,7 +394,7 @@ serve(async (req) => {
 
     // KPIs
     const activePaying = rows.filter(
-      (r) => (r.plan === "basic" || r.plan === "standard") && r.payment_status === "paid"
+      (r) => ["basic", "standard", "premium", "unlimited"].includes(r.plan) && r.payment_status === "paid"
     );
     const pastDue = rows.filter((r) => r.payment_status === "past_due" || r.payment_status === "unpaid");
     const mrr = activePaying.reduce((acc, r) => acc + (PLAN_PRICES[r.plan] ?? 0), 0);
@@ -397,7 +410,8 @@ serve(async (req) => {
     let failedThisMonth = 0;
     let churnCount = 0;
     try {
-      const charges = await stripe.charges.list({
+      const stripeClient = requireStripe();
+      const charges = await stripeClient.charges.list({
         created: { gte: firstOfMonth },
         limit: 100,
       });
@@ -408,7 +422,7 @@ serve(async (req) => {
         }
         if (ch.status === "failed") failedThisMonth++;
       }
-      const canceled = await stripe.subscriptions.list({
+      const canceled = await stripeClient.subscriptions.list({
         status: "canceled",
         limit: 100,
       });
@@ -434,6 +448,8 @@ serve(async (req) => {
             free: rows.filter((r) => r.plan === "free").length,
             basic: rows.filter((r) => r.plan === "basic").length,
             standard: rows.filter((r) => r.plan === "standard").length,
+            premium: rows.filter((r) => r.plan === "premium").length,
+            unlimited: rows.filter((r) => r.plan === "unlimited").length,
           },
         },
         churches: rows,

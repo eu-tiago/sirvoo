@@ -37,13 +37,13 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         // Mobile: bottom sheet style
-        "fixed z-50 grid w-full gap-4 border bg-background shadow-lg duration-200",
-        "bottom-0 left-0 right-0 max-h-[92vh] overflow-y-auto rounded-t-2xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
+        "fixed z-50 grid min-h-0 w-auto max-w-[calc(100vw-1rem)] gap-4 overflow-x-hidden border bg-background shadow-lg duration-200",
+        "bottom-2 left-2 right-2 max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-t-2xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sirvo-overlay-scroll",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
         // Desktop: centered dialog
-        "sm:bottom-auto sm:left-[50%] sm:right-auto sm:top-[50%] sm:max-h-[85vh] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-xl sm:p-6",
+        "sm:bottom-auto sm:left-[50%] sm:right-auto sm:top-[50%] sm:w-full sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-xl sm:p-6",
         "sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:slide-in-from-bottom-0",
         "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
         "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%]",

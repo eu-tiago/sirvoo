@@ -401,7 +401,7 @@ export function CreateScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {step === 1 ? "Nova Escala — Evento" : "Nova Escala — Ministérios e Vagas"}

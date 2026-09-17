@@ -82,6 +82,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
   const getNextPlan = () => {
     if (maxUsers <= 3) return { plan: "basic" as const, name: "Básico", users: 10, price: "R$29,90" };
     if (maxUsers <= 10) return { plan: "standard" as const, name: "Standard", users: 30, price: "R$59,90" };
+    if (maxUsers <= 30) return { plan: "premium" as const, name: "Premium", users: 50, price: "R$99,90" };
     return null;
   };
 
@@ -200,7 +201,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
 
     if (subscription) {
       setMaxUsers(subscription.max_users);
-      const planNames = { free: "Gratuito", basic: "Básico", standard: "Standard" };
+      const planNames = { free: "Gratuito", basic: "Básico", standard: "Standard", premium: "Premium", unlimited: "Ilimitado" };
       setPlanName(planNames[subscription.plan as keyof typeof planNames] || "Gratuito");
     }
 

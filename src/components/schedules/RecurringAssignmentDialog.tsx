@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Clock } from "lucide-react";
-import { WEEKDAYS, OCCURRENCES } from "@/lib/recurrence";
+import { WEEKDAYS } from "@/lib/recurrence";
 import type { RecurringAssignment, RecurringInput } from "@/hooks/useRecurringAssignments";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -44,11 +44,9 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
   const [userId, setUserId] = useState("");
   const [roleId, setRoleId] = useState<string>(NO_ROLE);
   const [weekday, setWeekday] = useState<string>("0");
-  const [occurrence, setOccurrence] = useState<string>("1");
   // Arquitetura: Novo estado para o horário do culto
   const [time, setTime] = useState<string>("09:00");
   const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
 
   const [allowedMinistries, setAllowedMinistries] = useState<string[]>([]);
   const [loadingMinistries, setLoadingMinistries] = useState(false);
@@ -59,11 +57,9 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
     setMinistryId(editing?.ministry_id || "");
     setRoleId(editing?.role_id || NO_ROLE);
     setWeekday(String(editing?.weekday ?? 0));
-    setOccurrence(String(editing?.occurrence ?? 1));
     // Carrega o horário ou usa um padrão
     setTime(editing?.time ? editing.time.substring(0, 5) : "09:00");
     setStartDate(editing?.start_date || "");
-    setEndDate(editing?.end_date || "");
   }, [open, editing]);
 
   useEffect(() => {
@@ -109,10 +105,10 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
       user_id: userId,
       role_id: roleId === NO_ROLE ? null : roleId,
       weekday: Number(weekday),
-      occurrence: Number(occurrence),
+      occurrence: 0,
       time: time, // Delta: Enviando o horário para o hook
       start_date: startDate || null,
-      end_date: endDate || null,
+      end_date: null,
       active: editing?.active ?? true,
     });
     if (ok) onOpenChange(false);
@@ -120,7 +116,7 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Editar escala fixa" : "Nova escala fixa"}</DialogTitle>
           <DialogDescription>
@@ -196,8 +192,7 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
             </Select>
           </div>
 
-          {/* NOVA SEÇÃO: Dia, Ocorrência e HORÁRIO */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Dia da semana</Label>
               <Select value={weekday} onValueChange={setWeekday}>
@@ -208,21 +203,6 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
                   {WEEKDAYS.map((w) => (
                     <SelectItem key={w.value} value={String(w.value)}>
                       {w.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Semana no mês</Label>
-              <Select value={occurrence} onValueChange={setOccurrence}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {OCCURRENCES.map((o) => (
-                    <SelectItem key={o.value} value={String(o.value)}>
-                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -242,22 +222,12 @@ export function RecurringAssignmentDialog({ open, onOpenChange, ministries, memb
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
             <div className="space-y-2">
-              <Label>Válida a partir de (opcional)</Label>
+              <Label>Data</Label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Válida até (opcional)</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </div>
           </div>
-
-          {occurrence === "5" && (
-            <p className="text-xs text-muted-foreground">
-              A 5ª ocorrência só será gerada nos meses que realmente possuem essa data.
-            </p>
-          )}
         </div>
 
         <DialogFooter>

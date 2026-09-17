@@ -55,7 +55,7 @@ export function SongDialog({ open, onOpenChange, song, onSave, saving }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{song ? "Editar música" : "Nova música"}</DialogTitle>
         </DialogHeader>

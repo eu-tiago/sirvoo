@@ -58,6 +58,7 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
   const getNextPlan = () => {
     if (maxUsers <= 3) return { plan: "basic" as const, name: "Básico", users: 10, price: "R$29,90" };
     if (maxUsers <= 10) return { plan: "standard" as const, name: "Standard", users: 30, price: "R$59,90" };
+    if (maxUsers <= 30) return { plan: "premium" as const, name: "Premium", users: 50, price: "R$99,90" };
     return null;
   };
 
@@ -75,7 +76,7 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
     const { data } = await supabase.from("church_subscriptions").select("plan").eq("church_id", churchId).maybeSingle();
 
     if (data) {
-      const names = { free: "Gratuito", basic: "Básico", standard: "Standard" };
+      const names = { free: "Gratuito", basic: "Básico", standard: "Standard", premium: "Premium", unlimited: "Ilimitado" };
       setPlanName(names[data.plan as keyof typeof names] || "Gratuito");
     }
   };

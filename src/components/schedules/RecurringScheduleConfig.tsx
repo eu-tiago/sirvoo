@@ -6,8 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
-import { WEEKDAYS, OCCURRENCES, rotatingDateInMonth } from "@/lib/recurrence";
+import { Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { WEEKDAYS } from "@/lib/recurrence";
 import { getInitials } from "@/lib/utils";
 import { useMinistries } from "@/hooks/useMinistries";
 import { useRecurringAssignments, type RecurringAssignment } from "@/hooks/useRecurringAssignments";
@@ -15,22 +15,22 @@ import { RecurringAssignmentDialog } from "./RecurringAssignmentDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner"; // Adicionado para notificações
 
-// Helper para calcular a data exata da ocorrência no mês (respeita o rodízio de 5ª semana)
-const getExactDateStr = (year: number, month: number, weekday: number, occ: number) => {
-  const d = rotatingDateInMonth(year, month, weekday, occ);
-  if (!d) return null;
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-};
-
 
 interface Props {
   churchId: string | null;
   ministryFilter?: string;
   weekday: string;
   onWeekdayChange: (val: string) => void;
+  onCreateReady?: (handler: () => void) => void;
 }
 
-export function RecurringScheduleConfig({ churchId, ministryFilter = "Todas", weekday, onWeekdayChange }: Props) {
+export function RecurringScheduleConfig({
+  churchId,
+  ministryFilter = "Todas",
+  weekday,
+  onWeekdayChange,
+  onCreateReady,
+}: Props) {
   const queryClient = useQueryClient();
   const { ministries, loading: ministriesLoading } = useMinistries(churchId);
   const { items, loading, saving, save, remove, toggleActive, syncRange } = useRecurringAssignments(churchId);
@@ -43,7 +43,6 @@ export function RecurringScheduleConfig({ churchId, ministryFilter = "Todas", we
 
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<RecurringAssignment | null>(null);
-  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     if (!churchId) return;
@@ -90,15 +89,12 @@ export function RecurringScheduleConfig({ churchId, ministryFilter = "Todas", we
     setMonthString(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   };
 
-  const handleGenerateNextMonth = async () => {
-    const [y, m] = monthString.split("-").map(Number);
-    const fromDate = `${y}-${String(m).padStart(2, "0")}-01`;
-    const lastDay = new Date(y, m, 0).getDate();
-    const toDate = `${y}-${String(m).padStart(2, "0")}-${lastDay}`;
-    setSyncing(true);
-    await syncRange(fromDate, toDate);
-    setSyncing(false);
-  };
+  useEffect(() => {
+    onCreateReady?.(() => {
+      setEditing(null);
+      setShowDialog(true);
+    });
+  }, [onCreateReady]);
 
   if (loading || ministriesLoading) {
     return (
@@ -110,10 +106,6 @@ export function RecurringScheduleConfig({ churchId, ministryFilter = "Todas", we
     );
   }
 
-  const [yearStr, monthStr] = monthString.split("-");
-  const refYear = parseInt(yearStr, 10);
-  const refMonth = parseInt(monthStr, 10) - 1;
-
   return (
     <div className="space-y-4">
       {ministryFilter === "Todas" && (
@@ -123,97 +115,76 @@ export function RecurringScheduleConfig({ churchId, ministryFilter = "Todas", we
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
-        <Select value={weekday} onValueChange={onWeekdayChange}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os dias</SelectItem>
-            {WEEKDAYS.map((w) => (
-              <SelectItem key={w.value} value={String(w.value)}>
-                {w.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/60 p-3 sm:flex-row sm:items-center">
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={weekday} onValueChange={onWeekdayChange}>
+            <SelectTrigger className="h-10 w-full sm:w-[190px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os dias</SelectItem>
+              {WEEKDAYS.map((w) => (
+                <SelectItem key={w.value} value={String(w.value)}>
+                  {w.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <div className="flex items-center bg-card border rounded-lg p-1 shadow-sm shrink-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={() => handleMonthChange(-1)}
-            title="Mês Anterior"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
+          <div className="flex h-10 items-center justify-between rounded-lg border border-border bg-background px-1 shadow-sm sm:w-[220px]">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => handleMonthChange(-1)}
+              title="Mês anterior"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
 
-          <Input
-            type="month"
-            value={monthString}
-            onChange={(e) => {
-              if (e.target.value) setMonthString(e.target.value);
-            }}
-            className="h-8 border-0 shadow-none focus-visible:ring-0 text-center font-semibold bg-transparent w-[150px] px-1 cursor-pointer"
-          />
+            <Input
+              type="month"
+              value={monthString}
+              onChange={(e) => {
+                if (e.target.value) setMonthString(e.target.value);
+              }}
+              className="h-8 w-full border-0 bg-transparent px-1 text-center font-semibold shadow-none focus-visible:ring-0 cursor-pointer"
+              aria-label="Mês da escala fixa"
+            />
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={() => handleMonthChange(1)}
-            title="Próximo Mês"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-
-        <div className="flex flex-1 items-center justify-end gap-2 flex-wrap">
-          <Button variant="secondary" onClick={handleGenerateNextMonth} disabled={syncing}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? "animate-spin" : ""}`} /> Gerar Escalas do Mês
-          </Button>
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setShowDialog(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" /> Nova escala fixa
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => handleMonthChange(1)}
+              title="Próximo mês"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="space-y-4">
-        {OCCURRENCES.map((occ) => {
-          const occRows = visible.filter((i) => i.occurrence === occ.value);
-          if (occRows.length === 0) return null;
-
-          return (
-            <div key={occ.value} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        {visible.length > 0 && (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between mb-4 pb-3 border-b">
-                <h3 className="text-base font-bold text-foreground">{occ.label} Semana do Mês</h3>
-                <Badge variant="secondary">{occRows.length} voluntário(s)</Badge>
+                <h3 className="text-base font-bold text-foreground">Escalas semanais</h3>
+                <Badge variant="secondary">{visible.length} voluntário(s)</Badge>
               </div>
               <div className="space-y-4">
-                {Array.from(new Set(occRows.map((r) => r.weekday)))
+                {Array.from(new Set(visible.map((r) => r.weekday)))
                   .sort((a, b) => a - b)
                   .map((wDay) => {
                     const dayName = WEEKDAYS.find((w) => w.value === wDay)?.label || "Dia";
-                    const exactDate = getExactDateStr(refYear, refMonth, wDay, occ.value);
-                    const dayRows = occRows.filter((r) => r.weekday === wDay);
+                    const dayRows = visible.filter((r) => r.weekday === wDay);
 
                     return (
                       <div key={wDay} className="rounded-xl border bg-muted/20 p-3 space-y-2">
                         <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground border-b pb-2">
                           <span className="flex items-center gap-1.5 text-foreground font-medium">📅 {dayName}</span>
-                          {exactDate && (
-                            <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-md font-bold text-[10px]">
-                              {exactDate}
-                            </span>
-                          )}
                         </div>
                         <div className="space-y-2 pt-1">
                           {dayRows.map((item) => (
@@ -263,8 +234,7 @@ export function RecurringScheduleConfig({ churchId, ministryFilter = "Todas", we
                   })}
               </div>
             </div>
-          );
-        })}
+        )}
       </div>
       <RecurringAssignmentDialog
         open={showDialog}

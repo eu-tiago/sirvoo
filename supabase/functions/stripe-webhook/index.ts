@@ -16,11 +16,15 @@ const logStep = (step: string, details?: any) => {
 const PRODUCT_IDS = {
   basic: "prod_TZyl2yFHQOUsym", // 10 users
   standard: "prod_TZyqLTOzuAEdFV", // 30 users
+  premium: Deno.env.get("STRIPE_PRODUCT_PREMIUM") ?? "",
+  unlimited: Deno.env.get("STRIPE_PRODUCT_UNLIMITED") ?? "",
 };
 
 const PLAN_LIMITS: Record<string, { plan: string; maxUsers: number }> = {
   [PRODUCT_IDS.basic]: { plan: "basic", maxUsers: 10 },
   [PRODUCT_IDS.standard]: { plan: "standard", maxUsers: 30 },
+  [PRODUCT_IDS.premium]: { plan: "premium", maxUsers: 50 },
+  [PRODUCT_IDS.unlimited]: { plan: "unlimited", maxUsers: 999999 },
 };
 
 const FREE_PLAN = { plan: "free", maxUsers: 3 };
@@ -270,7 +274,7 @@ async function handleCheckoutCompleted(
     await supabase.rpc("send_notification", {
       _user_id: userId,
       _title: "Assinatura Ativada!",
-      _message: `Seu plano ${planInfo.plan === "basic" ? "Básico" : "Standard"} foi ativado com sucesso.`,
+      _message: `Seu plano ${planInfo.plan === "basic" ? "Básico" : planInfo.plan === "standard" ? "Standard" : planInfo.plan === "premium" ? "Premium" : "Ilimitado"} foi ativado com sucesso.`,
       _type: "success",
     });
   }

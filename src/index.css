@@ -4,6 +4,17 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .sirvo-overlay-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sirvo-overlay-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /*
   Sirvo Design System — "Task" inspired palette
   Royal navy + lavender + neon green + coral pink

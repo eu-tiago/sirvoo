@@ -35,7 +35,7 @@ type ChurchRow = {
   created_at: string;
   admin_name: string;
   admin_email: string;
-  plan: "free" | "basic" | "standard";
+  plan: "free" | "basic" | "standard" | "premium" | "unlimited";
   max_users: number;
   current_users: number;
   status: string;
@@ -60,7 +60,7 @@ type Kpis = {
   month_invoices: number;
   failed_this_month: number;
   churn: number;
-  plan_breakdown: { free: number; basic: number; standard: number };
+  plan_breakdown: { free: number; basic: number; standard: number; premium: number; unlimited: number };
 };
 
 type Payment = {
@@ -83,6 +83,8 @@ const planBadge: Record<string, { label: string; className: string }> = {
   free: { label: "Gratuito", className: "bg-muted text-muted-foreground" },
   basic: { label: "Básico", className: "bg-primary/10 text-primary" },
   standard: { label: "Padrão", className: "bg-amber-500/10 text-amber-600" },
+  premium: { label: "50 usuários", className: "bg-blue-500/10 text-blue-600" },
+  unlimited: { label: "Ilimitado", className: "bg-violet-500/10 text-violet-600" },
 };
 
 const paymentStatusBadge: Record<string, { label: string; className: string; icon: any }> = {
@@ -123,7 +125,7 @@ export default function AdminFinancial() {
 
   // override dialog
   const [overrideTarget, setOverrideTarget] = useState<ChurchRow | null>(null);
-  const [overridePlan, setOverridePlan] = useState<"free" | "basic" | "standard">("basic");
+  const [overridePlan, setOverridePlan] = useState<"free" | "basic" | "standard" | "premium" | "unlimited">("basic");
 
   // invoices dialog
   const [invoicesTarget, setInvoicesTarget] = useState<ChurchRow | null>(null);
@@ -377,6 +379,8 @@ export default function AdminFinancial() {
                       <SelectItem value="free">Gratuito</SelectItem>
                       <SelectItem value="basic">Básico</SelectItem>
                       <SelectItem value="standard">Padrão</SelectItem>
+                      <SelectItem value="premium">50 usuários</SelectItem>
+                      <SelectItem value="unlimited">Ilimitado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -591,6 +595,8 @@ export default function AdminFinancial() {
                 <SelectItem value="free">Gratuito (3 usuários)</SelectItem>
                 <SelectItem value="basic">Básico (10 usuários)</SelectItem>
                 <SelectItem value="standard">Padrão (30 usuários)</SelectItem>
+                <SelectItem value="premium">Premium (50 usuários)</SelectItem>
+                <SelectItem value="unlimited">Ilimitado</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -611,7 +617,7 @@ export default function AdminFinancial() {
             <DialogTitle>Faturas — {invoicesTarget?.church_name}</DialogTitle>
             <DialogDescription>Histórico de cobranças no Stripe</DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[60dvh] overflow-y-auto">
             {invoicesLoading ? (
               <div className="space-y-2">
                 {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}

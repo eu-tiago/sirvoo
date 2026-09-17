@@ -16,12 +16,16 @@ const logStep = (step: string, details?: any) => {
 const PRODUCT_IDS = {
   basic: "prod_TZyl2yFHQOUsym", // 5 users
   standard: "prod_TZyqLTOzuAEdFV", // 10 users
+  premium: Deno.env.get("STRIPE_PRODUCT_PREMIUM") ?? "",
+  unlimited: Deno.env.get("STRIPE_PRODUCT_UNLIMITED") ?? "",
 };
 
 const PLAN_LIMITS = {
   free: 3,
   basic: 10,
   standard: 30,
+  premium: 50,
+  unlimited: 999999,
 };
 
 serve(async (req) => {
@@ -37,9 +41,6 @@ serve(async (req) => {
 
   try {
     logStep("Function started");
-
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header provided");
@@ -62,6 +63,39 @@ serve(async (req) => {
         plan: "unlimited",
         max_users: 999999,
         is_owner: true
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (churchId) {
+      const { data: storedSubscription } = await supabaseClient
+        .from("church_subscriptions")
+        .select("plan, max_users, current_period_end, stripe_subscription_id, status")
+        .eq("church_id", churchId)
+        .maybeSingle();
+
+      if (storedSubscription && storedSubscription.plan !== "free") {
+        return new Response(JSON.stringify({
+          subscribed: storedSubscription.status === "active" || storedSubscription.status === "trialing",
+          plan: storedSubscription.plan,
+          max_users: storedSubscription.max_users,
+          subscription_end: storedSubscription.current_period_end,
+          stripe_subscription_id: storedSubscription.stripe_subscription_id,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+    }
+
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    if (!stripeKey) {
+      return new Response(JSON.stringify({
+        subscribed: false,
+        plan: "free",
+        max_users: PLAN_LIMITS.free,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -111,11 +145,15 @@ serve(async (req) => {
     logStep("Active subscription found", { productId, subscriptionEnd });
 
     // Determine plan based on product ID
-    let plan: "free" | "basic" | "standard" = "free";
+    let plan: "free" | "basic" | "standard" | "premium" | "unlimited" = "free";
     if (productId === PRODUCT_IDS.basic) {
       plan = "basic";
     } else if (productId === PRODUCT_IDS.standard) {
       plan = "standard";
+    } else if (productId === PRODUCT_IDS.premium) {
+      plan = "premium";
+    } else if (productId === PRODUCT_IDS.unlimited) {
+      plan = "unlimited";
     }
 
     const maxUsers = PLAN_LIMITS[plan];

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -12,54 +12,24 @@ import { ReminderSettings } from "@/components/profile/ReminderSettings";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock, ChevronRight, LogOut, HelpCircle, FileText } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+
+// 1. Importe o useChurch do seu contexto global
+import { useChurch } from "@/hooks/ChurchContext"; // Ajuste o caminho se necessário
 
 const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const [avatarUrl, setAvatarUrl] = useState<string>();
-  const [churchName, setChurchName] = useState("Carregando...");
+  
+  // 2. Consome os dados de igreja diretamente do cache global
+  const { church, loading: churchLoading } = useChurch();
+  
+  // O avatar pode continuar com estado local caso o componente ProfileHeader permita alterá-lo em tempo real
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(
+    user?.user_metadata?.avatar_url || undefined
+  );
+  
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      fetchUserData();
-    }
-  }, [user]);
-
-  const fetchUserData = async () => {
-    if (!user) return;
-
-    try {
-      // Fetch profile
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profile?.avatar_url) {
-        setAvatarUrl(profile.avatar_url);
-      }
-
-      // Fetch church name
-      const { data: membership } = await supabase
-        .from("church_members")
-        .select("church:churches(name)")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (membership?.church) {
-        setChurchName((membership.church as any).name);
-      } else {
-        setChurchName("Sem igreja vinculada");
-      }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-      setChurchName("Erro ao carregar");
-    }
-  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -68,6 +38,11 @@ const Profile = () => {
 
   const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário";
   const userEmail = user?.email || "";
+  
+  // Define o nome da igreja vindo do contexto global
+  const churchName = churchLoading 
+    ? "Carregando..." 
+    : (church?.name || "Sem igreja vinculada");
 
   const menuItems = [
     { 

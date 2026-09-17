@@ -68,6 +68,30 @@ const plans = [
     ],
     cta: "Assinar Agora",
     popular: false
+  },
+  {
+    id: "premium",
+    name: "Premium",
+    price: "R$ 99,90",
+    period: "/mês",
+    description: "Para igrejas com equipes maiores",
+    users: "Até 50 usuários",
+    maxUsers: 50,
+    features: ["Até 50 usuários", "Ministérios ilimitados", "Escalas avançadas", "Relatórios completos", "Suporte prioritário"],
+    cta: "Assinar Agora",
+    popular: false
+  },
+  {
+    id: "unlimited",
+    name: "Ilimitado",
+    price: "R$ 149,90",
+    period: "/mês",
+    description: "Para igrejas sem limite de crescimento",
+    users: "Usuários ilimitados",
+    maxUsers: 999999,
+    features: ["Usuários ilimitados", "Ministérios ilimitados", "Escalas avançadas", "Relatórios completos", "Suporte premium"],
+    cta: "Assinar Agora",
+    popular: false
   }
 ];
 
@@ -115,7 +139,7 @@ const Pricing = () => {
     }
 
     setProcessingPlan(planId);
-    await createCheckout(planId as "basic" | "standard", churchId);
+    await createCheckout(planId as "basic" | "standard" | "premium" | "unlimited", churchId);
     setProcessingPlan(null);
   };
 
@@ -147,7 +171,7 @@ const Pricing = () => {
           </div>
 
           {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 md:gap-8 max-w-7xl mx-auto">
             {plans.map((plan, index) => (
               <div 
                 key={plan.name}

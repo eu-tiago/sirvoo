@@ -99,7 +99,7 @@ export function nextRecurrenceDate(
     d.setDate(start.getDate() + i);
     if (d.getDay() !== weekday) continue;
     const occ = rotatingOccurrence(d);
-    const matches = occ === occurrence || (occurrenceOfMonth(d) === 5 && occurrence === 5);
+    const matches = occurrence === 0 || occ === occurrence || (occurrenceOfMonth(d) === 5 && occurrence === 5);
     if (matches) return d;
   }
   return null;

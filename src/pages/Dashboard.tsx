@@ -11,12 +11,18 @@ import { TodayCheckInCard } from "@/components/dashboard/TodayCheckInCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSchedules } from "@/hooks/useSchedules";
-import { useChurchId } from "@/hooks/useChurchId";
 import { supabase } from "@/integrations/supabase/client";
+
+// 1. Importe o useChurch do seu novo contexto global
+import { useChurch } from "@/hooks/ChurchContext"; // Ajuste o caminho se necessário
 
 const Dashboard = () => {
   const { user, loading: authLoading } = useAuth();
-  const { churchId } = useChurchId();
+  
+  // 2. Substituímos o useChurchId() pelo nosso contexto global cacheado
+  const { church } = useChurch();
+  const churchId = church?.id;
+
   const { schedules, confirmAssignment, markUnavailable } = useSchedules(churchId);
   const navigate = useNavigate();
 

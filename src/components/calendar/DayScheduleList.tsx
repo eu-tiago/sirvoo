@@ -96,7 +96,7 @@ export function DayScheduleList({ churchId, date }: { churchId: string | null; d
         .select("id, ministry_id, user_id, role_id, time, weekday, occurrence, start_date, end_date, active")
         .eq("church_id", churchId)
         .eq("weekday", weekday)
-        .in("occurrence", occs)
+        .in("occurrence", Array.from(new Set([0, ...occs])))
         .eq("active", true);
 
       const validRecurring = (recurring || []).filter(

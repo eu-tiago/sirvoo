@@ -16,6 +16,8 @@ const logStep = (step: string, details?: any) => {
 const PRICE_IDS = {
   basic: "price_1SconzR22UuVVE7TxdnVsUcl", // R$29.90/month - 5 users
   standard: "price_1ScosyR22UuVVE7TcS70lPb4", // R$59.90/month - 10 users
+  premium: Deno.env.get("STRIPE_PRICE_PREMIUM") ?? "",
+  unlimited: Deno.env.get("STRIPE_PRICE_UNLIMITED") ?? "",
 };
 
 serve(async (req) => {

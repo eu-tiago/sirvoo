@@ -9,7 +9,7 @@ interface AvailabilityDialogProps {
 export function AvailabilityDialog({ open, onOpenChange }: AvailabilityDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Minha Disponibilidade</DialogTitle>
         </DialogHeader>

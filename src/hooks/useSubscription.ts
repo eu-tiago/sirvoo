@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-export type SubscriptionPlan = "free" | "basic" | "standard";
+export type SubscriptionPlan = "free" | "basic" | "standard" | "premium" | "unlimited";
 
 interface SubscriptionStatus {
   subscribed: boolean;
@@ -35,7 +35,7 @@ export function useSubscription() {
     }
   }, []);
 
-  const createCheckout = useCallback(async (plan: "basic" | "standard", churchId: string) => {
+  const createCheckout = useCallback(async (plan: Exclude<SubscriptionPlan, "free">, churchId: string) => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("create-checkout", {
