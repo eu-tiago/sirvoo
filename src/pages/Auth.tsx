@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,8 @@ const signupSchema = loginSchema.extend({
 });
 
 const Auth = () => {
-  const [searchParams] = useSearchParams();
-  const [isSignUp, setIsSignUp] = useState(searchParams.get("mode") === "signup");
+  // Estado forçado para false, garantindo que abra sempre no Login
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -53,10 +53,6 @@ const Auth = () => {
 
     checkUserAndRedirect();
   }, [user, loading, navigate]);
-
-  useEffect(() => {
-    setIsSignUp(searchParams.get("mode") === "signup");
-  }, [searchParams]);
 
   const validateForm = () => {
     try {
