@@ -1,3 +1,4 @@
+import { isMaster } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import Stripe from "https://esm.sh/stripe@18.5.0";
@@ -7,7 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SUPERADMIN_EMAIL = "tiagotalmud@gmail.com";
 
 const log = (s: string, d?: any) =>
   console.log(`[ADMIN-INTEGRATIONS] ${s}${d ? " - " + JSON.stringify(d) : ""}`);
@@ -27,7 +27,7 @@ interface IntegrationStatus {
 
 function mask(value: string | undefined): string {
   if (!value) return "—";
-  return value;
+  return "Configurada";
 }
 
 serve(async (req) => {
@@ -46,9 +46,9 @@ serve(async (req) => {
     const { data: userData, error: userErr } = await supabase.auth.getUser(token);
     if (userErr) throw new Error(userErr.message);
     const user = userData.user;
-    if (!user?.email || user.email.toLowerCase() !== SUPERADMIN_EMAIL.toLowerCase()) {
+    if (!user || !(await isMaster(req))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
         status: 403,
       });
     }
@@ -71,7 +71,7 @@ serve(async (req) => {
             ok: true,
             message: `Conectado à conta Stripe: ${acct.email || acct.id} (${acct.country})`,
           }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
         );
       }
 
@@ -94,7 +94,7 @@ serve(async (req) => {
               ? `Conectado. Domínios: ${domains}`
               : "Conectado. Nenhum domínio cadastrado ainda.",
           }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
         );
       }
 
@@ -105,7 +105,7 @@ serve(async (req) => {
           method: "POST",
           headers: {
             Authorization: `Bearer ${key}`,
-            "Content-Type": "application/json",
+            "Content-Type": "application/json", "Cache-Control": "no-store",
           },
           body: JSON.stringify({
             model: "google/gemini-2.5-flash-lite",
@@ -119,7 +119,7 @@ serve(async (req) => {
         }
         return new Response(
           JSON.stringify({ ok: true, message: "Lovable AI Gateway respondendo normalmente." }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
         );
       }
 
@@ -138,7 +138,7 @@ serve(async (req) => {
             ok: true,
             message: `Chaves VAPID válidas. ${count ?? 0} dispositivo(s) inscrito(s).`,
           }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
         );
       }
 
@@ -148,7 +148,7 @@ serve(async (req) => {
         if (!sec.startsWith("whsec_")) throw new Error("Formato suspeito (esperado whsec_...)");
         return new Response(
           JSON.stringify({ ok: true, message: "Webhook secret presente e com formato válido." }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
         );
       }
 
@@ -157,7 +157,7 @@ serve(async (req) => {
         if (error) throw new Error(error.message);
         return new Response(
           JSON.stringify({ ok: true, message: "Banco de dados acessível." }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
         );
       }
 
@@ -276,12 +276,12 @@ serve(async (req) => {
     };
 
     return new Response(JSON.stringify({ integrations, summary }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   } catch (error: any) {
     log("error", { msg: error.message });
-    return new Response(JSON.stringify({ error: error.message, ok: false }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ error: "N?o foi poss?vel validar a integra??o. Consulte os logs do servidor.", ok: false }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
       status: 400,
     });
   }

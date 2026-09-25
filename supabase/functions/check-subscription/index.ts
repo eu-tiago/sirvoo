@@ -1,202 +1,25 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-const logStep = (step: string, details?: any) => {
-  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[CHECK-SUBSCRIPTION] ${step}${detailsStr}`);
-};
-
-// Product IDs for subscription plans
-const PRODUCT_IDS = {
-  basic: "prod_TZyl2yFHQOUsym", // 5 users
-  standard: "prod_TZyqLTOzuAEdFV", // 10 users
-  premium: Deno.env.get("STRIPE_PRODUCT_PREMIUM") ?? "",
-  unlimited: Deno.env.get("STRIPE_PRODUCT_UNLIMITED") ?? "",
-};
-
-const PLAN_LIMITS = {
-  free: 3,
-  basic: 10,
-  standard: 30,
-  premium: 50,
-  unlimited: 999999,
-};
-
+const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Content-Type": "application/json", "Cache-Control": "no-store" };
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const supabaseClient = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    { auth: { persistSession: false } }
-  );
-
+  if (req.method === "OPTIONS") return new Response(null, { headers });
   try {
-    logStep("Function started");
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
-    logStep("User authenticated", { userId: user.id, email: user.email });
-
-    const { churchId } = await req.json().catch(() => ({}));
-
-    // Owner email has unlimited access
-    const OWNER_EMAIL = "tiagotalmud@gmail.com";
-    if (user.email === OWNER_EMAIL) {
-      logStep("Owner account detected, granting unlimited access");
-      return new Response(JSON.stringify({
-        subscribed: true,
-        plan: "unlimited",
-        max_users: 999999,
-        is_owner: true
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    if (churchId) {
-      const { data: storedSubscription } = await supabaseClient
-        .from("church_subscriptions")
-        .select("plan, max_users, current_period_end, stripe_subscription_id, status")
-        .eq("church_id", churchId)
-        .maybeSingle();
-
-      if (storedSubscription && storedSubscription.plan !== "free") {
-        return new Response(JSON.stringify({
-          subscribed: storedSubscription.status === "active" || storedSubscription.status === "trialing",
-          plan: storedSubscription.plan,
-          max_users: storedSubscription.max_users,
-          subscription_end: storedSubscription.current_period_end,
-          stripe_subscription_id: storedSubscription.stripe_subscription_id,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        });
-      }
-    }
-
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) {
-      return new Response(JSON.stringify({
-        subscribed: false,
-        plan: "free",
-        max_users: PLAN_LIMITS.free,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    
-    if (customers.data.length === 0) {
-      logStep("No customer found, returning free plan");
-      return new Response(JSON.stringify({ 
-        subscribed: false,
-        plan: "free",
-        max_users: PLAN_LIMITS.free
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    const customerId = customers.data[0].id;
-    logStep("Found Stripe customer", { customerId });
-
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customerId,
-      status: "active",
-      limit: 1,
+    const client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
     });
-
-    if (subscriptions.data.length === 0) {
-      logStep("No active subscription found");
-      return new Response(JSON.stringify({ 
-        subscribed: false,
-        plan: "free",
-        max_users: PLAN_LIMITS.free
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
+    const { data: { user }, error: authError } = await client.auth.getUser();
+    if (authError || !user) return new Response(JSON.stringify({ error: "N?o autenticado" }), { headers, status: 401 });
+    let { churchId } = await req.json().catch(() => ({}));
+    if (!churchId) {
+      const { data } = await client.from("church_members").select("church_id").eq("user_id", user.id).order("joined_at").order("church_id").limit(1).maybeSingle();
+      churchId = data?.church_id;
     }
-
-    const subscription = subscriptions.data[0];
-    const productId = subscription.items.data[0].price.product as string;
-    const subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
-    
-    logStep("Active subscription found", { productId, subscriptionEnd });
-
-    // Determine plan based on product ID
-    let plan: "free" | "basic" | "standard" | "premium" | "unlimited" = "free";
-    if (productId === PRODUCT_IDS.basic) {
-      plan = "basic";
-    } else if (productId === PRODUCT_IDS.standard) {
-      plan = "standard";
-    } else if (productId === PRODUCT_IDS.premium) {
-      plan = "premium";
-    } else if (productId === PRODUCT_IDS.unlimited) {
-      plan = "unlimited";
-    }
-
-    const maxUsers = PLAN_LIMITS[plan];
-    logStep("Determined plan", { plan, maxUsers });
-
-    // Update church subscription in database if churchId provided
-    if (churchId) {
-      const { error: updateError } = await supabaseClient
-        .from("church_subscriptions")
-        .upsert({
-          church_id: churchId,
-          plan: plan,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscription.id,
-          max_users: maxUsers,
-          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-          current_period_end: subscriptionEnd,
-          status: subscription.status,
-        }, { onConflict: "church_id" });
-
-      if (updateError) {
-        logStep("Error updating subscription", { error: updateError.message });
-      } else {
-        logStep("Church subscription updated in database");
-      }
-    }
-
-    return new Response(JSON.stringify({
-      subscribed: true,
-      plan: plan,
-      max_users: maxUsers,
-      subscription_end: subscriptionEnd,
-      stripe_subscription_id: subscription.id
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logStep("ERROR", { message: errorMessage });
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+    if (!churchId) throw new Error("Igreja n?o informada");
+    // RLS authorizes the church; Stripe email is never used as tenant identity.
+    const { data, error } = await client.rpc("get_church_subscription", { _church_id: churchId });
+    if (error || !data) return new Response(JSON.stringify({ error: "Assinatura indispon?vel nesta igreja" }), { headers, status: 403 });
+    return new Response(JSON.stringify(data), { headers });
+  } catch {
+    return new Response(JSON.stringify({ error: "Erro ao consultar assinatura" }), { headers, status: 400 });
   }
 });

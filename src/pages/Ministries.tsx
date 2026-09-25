@@ -40,7 +40,7 @@ const Ministries = () => {
   const isMobile = useIsMobile();
   const { churchId, loading: churchLoading } = useChurchId();
   const { role } = useUserRole();
-  const isAdmin = role === "admin" || role === "ministry_leader";
+  const isAdmin = role === "admin";
 
   const {
     ministries = [],

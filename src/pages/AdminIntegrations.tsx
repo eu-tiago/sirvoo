@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { isSuperAdminEmail } from "@/lib/superadmin";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -51,16 +51,17 @@ interface Summary {
 export default function AdminIntegrations() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { isSuperAdmin, loading: roleLoading } = useUserRole();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [testingId, setTestingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && (!user || !isSuperAdminEmail(user.email))) {
+    if (!authLoading && !roleLoading && (!user || !isSuperAdmin)) {
       navigate("/dashboard");
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, roleLoading, isSuperAdmin, navigate]);
 
   const load = async () => {
     setLoading(true);
@@ -79,9 +80,9 @@ export default function AdminIntegrations() {
   };
 
   useEffect(() => {
-    if (user && isSuperAdminEmail(user.email)) load();
+    if (user && isSuperAdmin) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, isSuperAdmin]);
 
   const testIntegration = async (id: string) => {
     setTestingId(id);

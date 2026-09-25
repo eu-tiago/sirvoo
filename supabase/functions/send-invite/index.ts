@@ -1,3 +1,4 @@
+import { canManageChurch } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
@@ -48,27 +49,21 @@ serve(async (req) => {
     const { email, role: requestedRole, churchId, churchName, inviterName, ministryId, resend }: InviteRequest = await req.json();
     logStep("Invite request received", { email, role: requestedRole, churchId, ministryId });
 
-    const { data: membership, error: membershipError } = await supabaseClient
-      .from("church_members")
-      .select("role")
-      .eq("church_id", churchId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (membershipError) throw new Error("Erro ao verificar permissão na igreja");
-    if (!membership || !["admin", "ministry_leader"].includes(membership.role)) {
-      throw new Error("Você não tem permissão para convidar membros desta igreja");
+    if (!churchId || !(await canManageChurch(req, churchId))) {
+      return new Response(JSON.stringify({ error: "Apenas administradores podem convidar usuários." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const role = membership.role === "ministry_leader" ? "volunteer" : requestedRole;
+    const role = requestedRole;
     if (!["admin", "ministry_leader", "volunteer"].includes(role)) {
       throw new Error("Função de convite inválida");
     }
 
-    // Check if user can add more users (subscription limit) — super admin bypasses
-    const isSuperAdmin = (user.email || "").toLowerCase() === "tiagotalmud@gmail.com";
+    // The church's plan controls capacity for every administrator.
 
-    if (!isSuperAdmin) {
+
+    {
       const { data: canAdd, error: canAddError } = await supabaseClient
         .rpc("can_add_church_user", { _church_id: churchId });
 
@@ -120,7 +115,7 @@ serve(async (req) => {
 
     if (existingInvite) {
       // Update existing invite instead of creating new
-      await supabaseClient
+      const { error: updateError } = await supabaseClient
         .from("invitations")
         .update({
           role,
@@ -129,6 +124,7 @@ serve(async (req) => {
           expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         })
         .eq("id", existingInvite.id);
+      if (updateError) throw updateError;
       
       logStep("Updated existing pending invite", { inviteId: existingInvite.id });
     }
@@ -163,7 +159,7 @@ serve(async (req) => {
       inviteToken = newInvite.token;
     }
 
-    logStep("Invitation token generated", { token: inviteToken });
+
 
     const appUrl = req.headers.get("origin") || "https://sirvo.app";
     const inviteLink = `${appUrl}/convite/${inviteToken}`;

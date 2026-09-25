@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useChurch } from "./ChurchContext";
+import { useUserRole } from "./useUserRole";
+import { useAuth } from "./useAuth";
 
 interface UserProfile {
   id: string;
@@ -11,6 +14,9 @@ interface UserProfile {
 }
 
 export function useUserProfile() {
+  const { church } = useChurch();
+  const { role } = useUserRole();
+  const { user: currentUser } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,28 +36,13 @@ export function useUserProfile() {
           .eq("id", user.id)
           .maybeSingle();
 
-        // Fetch role
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        // Fetch church
-        const { data: memberData } = await supabase
-          .from("church_members")
-          .select("churches (name)")
-          .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
-
         setProfile({
           id: user.id,
           fullName: profileData?.full_name || user.email?.split("@")[0] || "Usuário",
           email: profileData?.email || user.email || "",
           avatarUrl: profileData?.avatar_url,
-          role: roleData?.role || "volunteer",
-          churchName: (memberData as any)?.churches?.name,
+          role: role || "volunteer",
+          churchName: church?.name,
         });
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -61,7 +52,7 @@ export function useUserProfile() {
     };
 
     fetchProfile();
-  }, []);
+  }, [currentUser?.id, role, church?.name]);
 
-  return { profile, loading };
+  return { profile: currentUser?.id === profile?.id ? profile : null, loading };
 }

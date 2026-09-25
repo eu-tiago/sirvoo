@@ -1,3 +1,4 @@
+import { isMaster } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
@@ -7,7 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SUPERADMIN_EMAIL = "tiagotalmud@gmail.com";
 
 const PRODUCT_IDS = {
   basic: "prod_TZyl2yFHQOUsym",
@@ -65,7 +65,7 @@ serve(async (req) => {
     const { data: userData, error: userErr } = await supabase.auth.getUser(token);
     if (userErr) throw new Error(userErr.message);
     const user = userData.user;
-    if (!user?.email || user.email.toLowerCase() !== SUPERADMIN_EMAIL.toLowerCase()) {
+    if (!user || !(await isMaster(req))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 403,
@@ -84,10 +84,32 @@ serve(async (req) => {
     log("Action", { action });
 
     // ---------- ACTIONS ----------
+    if (action === "delete_church") {
+      const { churchId, confirmationName } = body;
+      if (typeof churchId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(churchId)
+        || typeof confirmationName !== "string" || !confirmationName.trim()) {
+        return new Response(JSON.stringify({ error: "Informe a igreja e confirme seu nome." }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { error } = await supabase.rpc("delete_church_account", {
+        _church_id: churchId, _confirmation_name: confirmationName,
+      });
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      log("Church account deleted", { churchId, deletedBy: user.id });
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "manual_override") {
       const { churchId, plan, maxUsers } = body;
       if (!churchId || !plan) throw new Error("churchId and plan required");
-      const max = maxUsers ?? PLAN_LIMITS[plan] ?? 3;
+      const max = plan === "unlimited" ? PLAN_LIMITS.unlimited : maxUsers ?? PLAN_LIMITS[plan] ?? 3;
       const { error } = await supabase
         .from("church_subscriptions")
         .upsert(
@@ -112,34 +134,11 @@ serve(async (req) => {
       const stripeClient = requireStripe();
       const { churchId } = body;
       if (!churchId) throw new Error("churchId required");
-      const { data: members } = await supabase
-        .from("church_members")
-        .select("user_id")
-        .eq("church_id", churchId)
-        .eq("role", "admin")
-        .limit(1);
-      if (!members?.length) throw new Error("No admin found");
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("id", members[0].user_id)
-        .single();
-      if (!profile?.email) throw new Error("Admin email not found");
-
-      const customers = await stripeClient.customers.list({ email: profile.email, limit: 1 });
-      if (!customers.data.length) {
-        await supabase
-          .from("church_subscriptions")
-          .upsert(
-            { church_id: churchId, plan: "free", max_users: 3, status: "canceled" },
-            { onConflict: "church_id" }
-          );
-        return new Response(JSON.stringify({ success: true, plan: "free" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      const { data: stored, error: storedError } = await supabase.from("church_subscriptions")
+        .select("stripe_customer_id").eq("church_id", churchId).single();
+      if (storedError || !stored?.stripe_customer_id) throw new Error("Igreja sem cliente Stripe vinculado");
       const subs = await stripeClient.subscriptions.list({
-        customer: customers.data[0].id,
+        customer: stored.stripe_customer_id,
         status: "all",
         limit: 1,
       });
@@ -163,7 +162,7 @@ serve(async (req) => {
           church_id: churchId,
           plan,
           max_users: PLAN_LIMITS[plan],
-          stripe_customer_id: customers.data[0].id,
+          stripe_customer_id: stored.stripe_customer_id,
           stripe_subscription_id: subId,
           current_period_end: subEnd,
           status,

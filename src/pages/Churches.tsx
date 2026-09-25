@@ -1,3 +1,5 @@
+import { useUserRole } from "@/hooks/useUserRole";
+import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -19,6 +21,7 @@ type Church = {
 };
 
 export function Churches() {
+  const { isSuperAdmin, loading: roleLoading } = useUserRole();
   const [churches, setChurches] = useState<Church[]>([]);
   const [editingChurch, setEditingChurch] = useState<Church | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -53,8 +56,8 @@ export function Churches() {
   };
 
   useEffect(() => {
-    fetchChurches();
-  }, []);
+    if (isSuperAdmin) fetchChurches();
+  }, [isSuperAdmin]);
 
   const saveChurch = async (values: Omit<Church, "id" | "memberCount">) => {
     setSaving(true);
@@ -87,6 +90,8 @@ export function Churches() {
   const totalMembers = churches.reduce((total, church) => total + church.memberCount, 0);
   const cities = new Set(churches.map((church) => church.city).filter(Boolean)).size;
 
+  if (roleLoading) return null;
+  if (!isSuperAdmin) return <Navigate to="/dashboard" replace />;
   return (
     <ProtectedRoute>
       <AppLayout>

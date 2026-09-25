@@ -27,6 +27,7 @@ const editUserSchema = z.object({
 });
 
 interface EditUserDialogProps {
+  teamOnly?: boolean;
   user: {
     id: string;
     name: string;
@@ -39,7 +40,7 @@ interface EditUserDialogProps {
   onDelete: (userId: string) => Promise<void>;
 }
 
-export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }: EditUserDialogProps) {
+export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete, teamOnly = false }: EditUserDialogProps) {
   const [name, setName] = useState(user.name);
   const [role, setRole] = useState<"admin" | "ministry_leader" | "volunteer">(user.role);
 
@@ -58,7 +59,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }:
   }, [user]);
 
   useEffect(() => {
-    if (open && churchId && user.id) {
+    if (open && churchId && user.id && !teamOnly) {
       fetchMinistriesData();
     } else if (!open) {
       setSelectedMinistries([]);
@@ -109,22 +110,23 @@ export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }:
     try {
       await onUpdate(user.id, name, role);
 
-      const toInsert = selectedMinistries.filter((id) => !initialMinistries.includes(id));
-      const toDelete = initialMinistries.filter((id) => !selectedMinistries.includes(id));
+      if (!teamOnly) {
+        const toInsert = selectedMinistries.filter((id) => !initialMinistries.includes(id));
+        const toDelete = initialMinistries.filter((id) => !selectedMinistries.includes(id));
 
-      if (toDelete.length > 0) {
-        await supabase.from("ministry_members").delete().eq("user_id", user.id).in("ministry_id", toDelete);
+        if (toDelete.length > 0) {
+          await supabase.from("ministry_members").delete().eq("user_id", user.id).in("ministry_id", toDelete);
+        }
+
+        if (toInsert.length > 0) {
+          const inserts = toInsert.map((ministryId) => ({
+            ministry_id: ministryId,
+            user_id: user.id,
+            is_leader: role === "ministry_leader",
+          }));
+          await supabase.from("ministry_members").insert(inserts);
+        }
       }
-
-      if (toInsert.length > 0) {
-        const inserts = toInsert.map((ministryId) => ({
-          ministry_id: ministryId,
-          user_id: user.id,
-          is_leader: role === "ministry_leader",
-        }));
-        await supabase.from("ministry_members").insert(inserts);
-      }
-
       onOpenChange(false);
     } catch (error: any) {
       toast({
@@ -187,7 +189,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }:
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Função</Label>
-                <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
+                <Select disabled={teamOnly} value={role} onValueChange={(v) => setRole(v as typeof role)}>
                   <SelectTrigger className="sirvo-input">
                     <SelectValue placeholder="Selecione a função" />
                   </SelectTrigger>
@@ -199,7 +201,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }:
                 </Select>
               </div>
 
-              <div className="space-y-2 pt-2 border-t mt-4">
+              {!teamOnly && <div className="space-y-2 pt-2 border-t mt-4">
                 <Label>Vínculos de Ministérios</Label>
                 {/* Removido o max-h e overflow daqui */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 border rounded-md bg-muted/20">
@@ -222,7 +224,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }:
                     <p className="text-sm text-muted-foreground col-span-2">Nenhum ministério encontrado.</p>
                   )}
                 </div>
-              </div>
+              </div>}
             </div>
           </form>
 
@@ -276,8 +278,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUpdate, onDelete }:
               Confirmar Remoção
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover <strong>{user.name}</strong> da igreja? Esta ação removerá o usuário de
-              todos os ministérios e escalas. Esta ação não pode ser desfeita.
+              {teamOnly ? `Remover ${user.name} dos ministérios que você lidera? Os vínculos com outras equipes e com a igreja serão preservados.` : `Remover ${user.name} da igreja, de todos os ministérios e escalas? Esta ação não pode ser desfeita.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

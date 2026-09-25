@@ -1,3 +1,4 @@
+import { isMaster } from "../_shared/authorization.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
@@ -6,7 +7,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const SUPER_ADMIN_EMAIL = "tiagotalmud@gmail.com";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
     const user = await getCallerUser(req);
     if (!user) return json({ error: "Não autenticado" }, 401);
     if (
-      (user.email ?? "").toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase()
+      !(await isMaster(req))
     ) {
       return json({ error: "Acesso restrito ao super admin" }, 403);
     }

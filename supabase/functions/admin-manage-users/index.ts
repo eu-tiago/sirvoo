@@ -1,8 +1,8 @@
+import { isMaster } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-const SUPER_ADMIN_EMAIL = "tiagotalmud@gmail.com";
 
 const log = (step: string, details?: unknown) =>
   console.log(`[ADMIN-MANAGE-USERS] ${step}${details ? ` - ${JSON.stringify(details)}` : ""}`);
@@ -43,7 +43,7 @@ serve(async (req) => {
     if (callerError || !caller.user) return jsonResponse({ error: "Não autenticado" }, 401);
 
     const callerEmail = (caller.user.email ?? "").toLowerCase();
-    if (callerEmail !== SUPER_ADMIN_EMAIL) {
+    if (!(await isMaster(req))) {
       return jsonResponse({ error: "Apenas o super administrador pode usar esta função" }, 403);
     }
 

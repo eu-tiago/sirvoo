@@ -152,24 +152,8 @@ export function useSwapRequests() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
 
-      const { error: assignError } = await supabase
-        .from("schedule_assignments")
-        .update({
-          user_id: user.id,
-          status: "confirmed",
-          notes: `Aceitou troca com ${request.requester_name}`,
-          confirmed_at: new Date().toISOString(),
-        })
-        .eq("id", request.requester_assignment_id);
-
-      if (assignError) throw assignError;
-
-      const { error: swapError } = await supabase
-        .from("swap_requests")
-        .update({ status: "accepted", updated_at: new Date().toISOString() })
-        .eq("id", request.id);
-
-      if (swapError) throw swapError;
+      const { error } = await supabase.rpc("respond_to_swap", { _request_id: request.id, _accept: true });
+      if (error) throw error;
 
       await supabase.rpc("send_notification", {
         _user_id: request.requester_id,
@@ -201,17 +185,8 @@ export function useSwapRequests() {
   const rejectSwap = async (request: SwapRequest) => {
     setProcessing(true);
     try {
-      const { error: swapError } = await supabase
-        .from("swap_requests")
-        .update({ status: "rejected", updated_at: new Date().toISOString() })
-        .eq("id", request.id);
-
-      if (swapError) throw swapError;
-
-      await supabase
-        .from("schedule_assignments")
-        .update({ status: "pending", notes: null })
-        .eq("id", request.requester_assignment_id);
+      const { error } = await supabase.rpc("respond_to_swap", { _request_id: request.id, _accept: false });
+      if (error) throw error;
 
       await supabase.rpc("send_notification", {
         _user_id: request.requester_id,

@@ -30,8 +30,9 @@ interface UserData {
 const Users = () => {
   const { user } = useAuth();
   const { isAdmin, isLeader, isSuperAdmin, loading: roleLoading } = useUserRole();
+  const teamOnly = isLeader && !isAdmin && !isSuperAdmin;
   const { churchId } = useChurchId();
-  const { maxUsers } = useSubscription();
+  const { checkSubscription } = useSubscription();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [users, setUsers] = useState<UserData[]>([]);
@@ -42,22 +43,39 @@ const Users = () => {
   const [passwordUser, setPasswordUser] = useState<UserData | null>(null);
 
   useEffect(() => {
-    if (churchId) {
+    if (churchId && !roleLoading) {
       fetchUsers();
     }
-  }, [churchId]);
+  }, [churchId, roleLoading, isLeader]);
 
   const fetchUsers = async () => {
     if (!churchId) return;
 
     try {
       setLoading(true);
+      setUsers([]);
+
+      let visibleVolunteerIds: string[] | null = null;
+      if (isLeader && !isAdmin && !isSuperAdmin) {
+        const { data: led, error: ledError } = await supabase.from("ministry_members")
+          .select("ministry_id, ministries!inner(church_id)").eq("user_id", user!.id)
+          .eq("is_leader", true).eq("ministries.church_id", churchId);
+        if (ledError) throw ledError;
+        if (!led?.length) return;
+        const { data: team, error: teamError } = await supabase.from("ministry_members")
+          .select("user_id").in("ministry_id", led.map(item => item.ministry_id));
+        if (teamError) throw teamError;
+        visibleVolunteerIds = [...new Set((team ?? []).map(item => item.user_id))];
+        if (!visibleVolunteerIds.length) return;
+      }
 
       // Fetch church members with their profiles and roles
-      const { data: members, error: membersError } = await supabase
+      let membersQuery = supabase
         .from("church_members")
         .select("user_id, role")
         .eq("church_id", churchId);
+      if (visibleVolunteerIds) membersQuery = membersQuery.in("user_id", visibleVolunteerIds).eq("role", "volunteer");
+      const { data: members, error: membersError } = await membersQuery;
 
       if (membersError) throw membersError;
 
@@ -105,7 +123,7 @@ const Users = () => {
     userId: string,
     newRole: "admin" | "ministry_leader" | "volunteer"
   ) => {
-    if (!churchId) return;
+    if (!churchId || !(isAdmin || isSuperAdmin)) return;
 
     try {
       const { error } = await supabase.rpc("set_member_role", {
@@ -139,7 +157,14 @@ const Users = () => {
     name: string,
     role: "admin" | "ministry_leader" | "volunteer"
   ) => {
-    if (!churchId) return;
+    if (!churchId) throw new Error("Igreja indisponível");
+    if (teamOnly) {
+      const { error } = await supabase.rpc("edit_team_user", { _target: userId, _church_id: churchId, _name: name });
+      if (error) throw error;
+      await fetchUsers();
+      return;
+    }
+    if (!(isAdmin || isSuperAdmin)) throw new Error("Sem permissão");
 
     // Update profile name
     const { error: profileError } = await supabase
@@ -149,7 +174,7 @@ const Users = () => {
 
     if (profileError) throw profileError;
 
-    // Update role through the secure RPC (keeps church_members + user_roles in sync)
+    // Update the role only in this church
     const { error: roleError } = await supabase.rpc("set_member_role", {
       _user_id: userId,
       _church_id: churchId,
@@ -169,24 +194,31 @@ const Users = () => {
   };
 
   const handleRemoveUser = async (userId: string) => {
-    if (!churchId) return;
+    if (!churchId) throw new Error("Igreja indisponível");
+    if (teamOnly) {
+      const { error } = await supabase.rpc("remove_team_user", { _target: userId, _church_id: churchId });
+      if (error) throw error;
+      await fetchUsers();
+      toast({ title: "Usuário removido da equipe" });
+      return;
+    }
+    if (!(isAdmin || isSuperAdmin)) throw new Error("Sem permissão");
 
     try {
-      // Remove from ministry_members first
-      const { error: ministryError } = await supabase
-        .from("ministry_members")
-        .delete()
-        .eq("user_id", userId);
-
-      if (ministryError) console.error("Error removing from ministries:", ministryError);
-
-      // Remove from schedule_assignments
-      const { error: scheduleError } = await supabase
-        .from("schedule_assignments")
-        .delete()
-        .eq("user_id", userId);
-
-      if (scheduleError) console.error("Error removing from schedules:", scheduleError);
+      const { data: ministries, error: ministriesError } = await supabase.from("ministries").select("id").eq("church_id", churchId);
+      if (ministriesError) throw ministriesError;
+      const ministryIds = (ministries ?? []).map(item => item.id);
+      if (ministryIds.length) {
+        const { data: schedules, error: schedulesError } = await supabase.from("schedules").select("id").in("ministry_id", ministryIds);
+        if (schedulesError) throw schedulesError;
+        const scheduleIds = (schedules ?? []).map(item => item.id);
+        if (scheduleIds.length) {
+          const { error } = await supabase.from("schedule_assignments").delete().eq("user_id", userId).in("schedule_id", scheduleIds);
+          if (error) throw error;
+        }
+        const { error } = await supabase.from("ministry_members").delete().eq("user_id", userId).in("ministry_id", ministryIds);
+        if (error) throw error;
+      }
 
       // Remove from church_members
       const { error: memberError } = await supabase
@@ -236,9 +268,9 @@ const Users = () => {
     );
   }
 
-  const canManageUsers = isAdmin || isSuperAdmin || isLeader;
+  const canViewUsers = isAdmin || isSuperAdmin || isLeader;
 
-  if (!canManageUsers) {
+  if (!canViewUsers) {
     return (
       <ProtectedRoute>
         <AppLayout>
@@ -251,7 +283,7 @@ const Users = () => {
             </h1>
             <p className="text-muted-foreground mb-6">
               Você não tem permissão para acessar esta página. Apenas
-              administradores e líderes podem gerenciar usuários.
+              administradores e líderes podem acessar esta página.
             </p>
             <Button onClick={() => navigate("/dashboard")}>
               Voltar ao Dashboard
@@ -272,20 +304,20 @@ const Users = () => {
               <div>
                 <h1 className="text-xl md:text-2xl font-bold text-foreground">Usuários</h1>
                 <p className="text-sm text-muted-foreground">
-                  Gerencie usuários e permissões
+                  {isLeader ? "Voluntários dos ministérios que você lidera" : "Gerencie usuários e permissões"}
                 </p>
               </div>
               <div className="flex gap-2">
-                <CreateUserDialog
-                  onSuccess={fetchUsers}
+                {(isAdmin || isSuperAdmin || isLeader) && <CreateUserDialog
+                  teamOnly={teamOnly}
+                  onSuccess={() => { void fetchUsers(); void checkSubscription().catch(() => {}); }}
                   currentUserCount={users.length}
-                  maxUsers={isSuperAdmin ? Infinity : maxUsers}
-                />
-                <InviteUserDialog
+                />}
+                {(isAdmin || isSuperAdmin) && <InviteUserDialog
                   onInviteSuccess={fetchUsers}
                   currentUserCount={users.length}
                   isSuperAdmin={isSuperAdmin}
-                />
+                />}
                 {isSuperAdmin && <SuperAdminUsersDialog onChanged={fetchUsers} />}
               </div>
             </div>
@@ -317,7 +349,7 @@ const Users = () => {
 
             {/* Filter Pills */}
             <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
-              {["all", "admin", "ministry_leader", "volunteer"].map((role) => (
+              {(isLeader ? ["volunteer"] : ["all", "admin", "ministry_leader", "volunteer"]).map((role) => (
                 <button
                   key={role}
                   onClick={() => setFilterRole(role)}
@@ -362,17 +394,19 @@ const Users = () => {
                     <UserCard
                       {...userData}
                       onChangeRole={handleChangeRole}
-                      onRemove={handleRemoveUser}
+                      onRemove={() => setEditingUser(userData)}
+                      onEdit={() => setEditingUser(userData)}
+                      canChangeRole={!teamOnly}
                       onManagePassword={
-                        isAdmin || isSuperAdmin ? () => setPasswordUser(userData) : undefined
+                        isAdmin || isSuperAdmin || isLeader ? () => setPasswordUser(userData) : undefined
                       }
                       canManage={
                         userData.id !== user?.id &&
-                        (isAdmin || isSuperAdmin || (isLeader && userData.role !== "admin"))
+                        (isAdmin || isSuperAdmin || isLeader)
                       }
                     />
                     {userData.id !== user?.id &&
-                      (isAdmin || isSuperAdmin || (isLeader && userData.role !== "admin")) && (
+                      (isAdmin || isSuperAdmin) && (
                       <Button
                         size="icon"
                         variant="outline"
@@ -391,6 +425,7 @@ const Users = () => {
           {/* Edit User Dialog */}
           {editingUser && (
             <EditUserDialog
+              teamOnly={teamOnly}
               user={editingUser}
               open={!!editingUser}
               onOpenChange={(open) => !open && setEditingUser(null)}
@@ -401,6 +436,8 @@ const Users = () => {
 
           {passwordUser && (
             <ManagePasswordDialog
+              resetOnly={teamOnly}
+              churchId={churchId ?? undefined}
               user={passwordUser}
               open={!!passwordUser}
               onOpenChange={(open) => !open && setPasswordUser(null)}

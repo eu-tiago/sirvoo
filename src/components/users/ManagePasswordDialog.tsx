@@ -14,12 +14,14 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ManagePasswordDialogProps {
+  resetOnly?: boolean;
+  churchId?: string;
   user: { id: string; name: string; email: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ManagePasswordDialog({ user, open, onOpenChange }: ManagePasswordDialogProps) {
+export function ManagePasswordDialog({ user, open, onOpenChange, resetOnly = false, churchId }: ManagePasswordDialogProps) {
   const { toast } = useToast();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -29,7 +31,7 @@ export function ManagePasswordDialog({ user, open, onOpenChange }: ManagePasswor
   const call = async (body: Record<string, unknown>) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const { data, error } = await supabase.functions.invoke("admin-manage-password", {
-      body,
+      body: { ...body, churchId },
       headers: sessionData.session
         ? { Authorization: `Bearer ${sessionData.session.access_token}` }
         : undefined,
@@ -122,6 +124,7 @@ export function ManagePasswordDialog({ user, open, onOpenChange }: ManagePasswor
         </DialogHeader>
 
         <div className="space-y-4">
+          {!resetOnly && <>
           <div className="space-y-2">
             <Label htmlFor="new-password">Nova senha</Label>
             <Input
@@ -157,6 +160,7 @@ export function ManagePasswordDialog({ user, open, onOpenChange }: ManagePasswor
             </div>
           </div>
 
+          </>}
           <Button variant="outline" className="w-full" onClick={handleReset} disabled={sending}>
             {sending ? (
               <Loader2 className="w-4 h-4 animate-spin" />

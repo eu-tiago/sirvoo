@@ -1,3 +1,4 @@
+import { canManageChurch } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
@@ -40,16 +41,18 @@ serve(async (req) => {
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    
-    if (customers.data.length === 0) {
-      throw new Error("No Stripe customer found for this user");
+    const { churchId } = await req.json();
+    if (!churchId || !(await canManageChurch(req, churchId))) {
+      return new Response(JSON.stringify({ error: "Sem permiss?o nesta igreja" }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 });
     }
-    
-    const customerId = customers.data[0].id;
-    logStep("Found Stripe customer", { customerId });
-
-    const origin = req.headers.get("origin") || "http://localhost:3000";
+    const { data: subscription, error } = await supabaseClient.from("church_subscriptions")
+      .select("stripe_customer_id").eq("church_id", churchId).single();
+    if (error || !subscription?.stripe_customer_id) throw new Error("Assinatura n?o encontrada");
+    const customerId = subscription.stripe_customer_id;
+    const { count: linkedChurches, error: linkError } = await supabaseClient.from("church_subscriptions")
+      .select("church_id", { count: "exact", head: true }).eq("stripe_customer_id", customerId);
+    if (linkError || linkedChurches !== 1) throw new Error("Vínculo financeiro precisa ser revisado pelo Admin Master");
+    const origin = "https://sirvo.app";
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${origin}/dashboard`,

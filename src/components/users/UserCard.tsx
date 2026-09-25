@@ -18,6 +18,8 @@ interface UserCardProps {
   onRemove: (userId: string) => void;
   onManagePassword?: (userId: string) => void;
   canManage: boolean;
+  canChangeRole?: boolean;
+  onEdit?: () => void;
 }
 
 const roleConfig = {
@@ -48,6 +50,8 @@ export function UserCard({
   onRemove,
   onManagePassword,
   canManage,
+  canChangeRole = true,
+  onEdit,
 }: UserCardProps) {
   const config = roleConfig[role];
   const RoleIcon = config.icon;
@@ -95,19 +99,20 @@ export function UserCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            {role !== "admin" && (
+            {onEdit && <DropdownMenuItem onClick={onEdit}>Editar usuário</DropdownMenuItem>}
+            {canChangeRole && role !== "admin" && (
               <DropdownMenuItem onClick={() => onChangeRole(id, "admin")}>
                 <ShieldCheck className="w-4 h-4 mr-2" />
                 Tornar Administrador
               </DropdownMenuItem>
             )}
-            {role !== "ministry_leader" && (
+            {canChangeRole && role !== "ministry_leader" && (
               <DropdownMenuItem onClick={() => onChangeRole(id, "ministry_leader")}>
                 <Shield className="w-4 h-4 mr-2" />
                 Tornar Líder
               </DropdownMenuItem>
             )}
-            {role !== "volunteer" && (
+            {canChangeRole && role !== "volunteer" && (
               <DropdownMenuItem onClick={() => onChangeRole(id, "volunteer")}>
                 <UsersIcon className="w-4 h-4 mr-2" />
                 Tornar Voluntário

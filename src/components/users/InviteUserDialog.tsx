@@ -65,8 +65,6 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
   const [ministryId, setMinistryId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const [maxUsers, setMaxUsers] = useState(3);
-  const [planName, setPlanName] = useState("Gratuito");
   const [churchName, setChurchName] = useState("");
   const [inviterName, setInviterName] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -75,7 +73,9 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
   const [resendingId, setResendingId] = useState<string | null>(null);
   const { toast } = useToast();
   const { churchId } = useChurchId();
-  const { createCheckout } = useSubscription();
+  const { createCheckout, subscription, maxUsers, ready, error: subscriptionError, canAddUsers, checkSubscription } = useSubscription();
+  const planNames = { free: "Gratuito", basic: "Básico", standard: "Padrão", premium: "Premium", unlimited: "Ilimitado" };
+  const planName = subscription ? planNames[subscription.plan] : "";
   const { ministries } = useMinistries(churchId);
   const { isLeader } = useUserRole();
 
@@ -193,17 +193,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
   const fetchSubscriptionAndChurch = async () => {
     if (!churchId) return;
 
-    const { data: subscription } = await supabase
-      .from("church_subscriptions")
-      .select("plan, max_users")
-      .eq("church_id", churchId)
-      .maybeSingle();
-
-    if (subscription) {
-      setMaxUsers(subscription.max_users);
-      const planNames = { free: "Gratuito", basic: "Básico", standard: "Standard", premium: "Premium", unlimited: "Ilimitado" };
-      setPlanName(planNames[subscription.plan as keyof typeof planNames] || "Gratuito");
-    }
+    void checkSubscription().catch(() => {});
 
     const { data: church } = await supabase
       .from("churches")
@@ -225,11 +215,12 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
     }
   };
 
-  const canAddUser = isSuperAdmin || currentUserCount < maxUsers;
-  const remainingSlots = isSuperAdmin ? Infinity : maxUsers - currentUserCount;
+  const canAddUser = ready && canAddUsers;
+  const remainingSlots = ready ? maxUsers - (subscription?.current_users ?? currentUserCount) : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ready) return;
 
     if (!canAddUser) {
       toast({
@@ -333,6 +324,11 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
             Envie um convite com link único. O membro será vinculado à sua igreja automaticamente.
           </DialogDescription>
         </DialogHeader>
+        {!ready && <Alert><AlertDescription>
+          {subscriptionError ? "Não foi possível consultar o plano da igreja. Tente novamente." : "Consultando o plano da igreja..."}
+          {subscriptionError && <Button variant="outline" onClick={() => void checkSubscription().catch(() => {})}>Tentar novamente</Button>}
+        </AlertDescription></Alert>}
+        {ready && <p className="text-sm text-muted-foreground">Plano {planName} · {subscription?.is_unlimited ? "Sem limite de usuários" : `${maxUsers} usuários`}</p>}
 
         <Tabs defaultValue="send" className="mt-2">
           <TabsList className="w-full">
@@ -352,7 +348,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
           </TabsList>
 
           <TabsContent value="send" className="space-y-4 mt-4">
-            {!canAddUser && nextPlan && (
+            {ready && !canAddUser && nextPlan && (
               <Alert className="border-primary/30 bg-primary/5">
                 <CreditCard className="h-4 w-4 text-primary" />
                 <AlertDescription className="flex flex-col gap-3">
@@ -370,7 +366,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
               </Alert>
             )}
 
-            {!canAddUser && !nextPlan && (
+            {ready && !canAddUser && !nextPlan && (
               <Alert variant="default">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>Você já está no plano máximo. Entre em contato para mais usuários.</AlertDescription>
@@ -453,7 +449,7 @@ export function InviteUserDialog({ onInviteSuccess, currentUserCount = 0, isSupe
               }}
               churchName={churchName}
               inviterName={inviterName}
-              remainingSlots={typeof remainingSlots === "number" && isFinite(remainingSlots) ? remainingSlots : 9999}
+              remainingSlots={remainingSlots}
               isSuperAdmin={isSuperAdmin}
             />
           </TabsContent>

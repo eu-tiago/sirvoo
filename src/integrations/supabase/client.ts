@@ -2,9 +2,15 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://gcvdyazfzdajzehhneuw.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjdmR5YXpmemRhanplaGhuZXV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MDA1NDQsImV4cCI6MjA5OTk3NjU0NH0.td3lBjyyOAQQsgp62AGZO7T1nzOL_Hnk8erzz7CooI4";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) throw new Error("Configure as vari?veis p?blicas do Supabase.");
+if (SUPABASE_PUBLISHABLE_KEY.startsWith("sb_secret_")) throw new Error("Use somente a chave p?blica do Supabase.");
+if (SUPABASE_PUBLISHABLE_KEY.startsWith("eyJ")) {
+  const payload = JSON.parse(atob(SUPABASE_PUBLISHABLE_KEY.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+  if (payload.role !== "anon") throw new Error("Use somente a chave anon do Supabase.");
+}
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,

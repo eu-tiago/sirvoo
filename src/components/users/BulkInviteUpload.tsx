@@ -212,7 +212,7 @@ export function BulkInviteUpload({
       return;
     }
 
-    if (!isSuperAdmin && validRows.length > remainingSlots) {
+    if (validRows.length > remainingSlots) {
       toast({
         title: "Limite excedido",
         description: `Você tem ${remainingSlots} vaga(s) e está tentando convidar ${validRows.length}.`,
@@ -335,7 +335,7 @@ export function BulkInviteUpload({
 
       {parsedRows.length > 0 && !sending && results.length === 0 && (
         <>
-          {!isSuperAdmin && validCount > remainingSlots && (
+          {validCount > remainingSlots && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
@@ -388,7 +388,7 @@ export function BulkInviteUpload({
             <Button
               type="button"
               onClick={handleSendAll}
-              disabled={validCount === 0 || (!isSuperAdmin && validCount > remainingSlots)}
+              disabled={validCount === 0 || (validCount > remainingSlots)}
               className="sirvo-btn-primary"
             >
               <Upload className="w-4 h-4 mr-2" />

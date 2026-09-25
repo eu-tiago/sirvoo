@@ -70,7 +70,7 @@ export function DesktopSidebar() {
   const adminItems = isFullAdmin
     ? [
         { to: "/users", icon: Shield, label: "Usuários" },
-        { to: "/churches", icon: Church, label: "Igrejas" },
+        ...(isSuperAdmin ? [{ to: "/churches", icon: Church, label: "Igrejas" }] : []),
       ]
     : [{ to: "/users", icon: Shield, label: "Usuários" }];
 

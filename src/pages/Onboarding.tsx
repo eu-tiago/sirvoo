@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +14,7 @@ import sirvoLogo from "@/assets/sirvo-logo.png";
 export default function Onboarding() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -60,38 +62,12 @@ export default function Onboarding() {
 
     setSaving(true);
     try {
-      const { data: newChurch, error: churchError } = await supabase
-        .from("churches")
-        .insert({
-          name: formData.name.trim(),
-          city: formData.city.trim() || null,
-          state: formData.state.trim() || null,
-          address: formData.address.trim() || null,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (churchError) throw churchError;
-
-      const { error: memberError } = await supabase
-        .from("church_members")
-        .insert({
-          church_id: newChurch.id,
-          user_id: user.id,
-          role: "admin",
-        });
-
-      if (memberError) throw memberError;
-
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .update({ role: "admin" })
-        .eq("user_id", user.id);
-
-      if (roleError) {
-        console.error("Error updating role:", roleError);
-      }
+      const { error } = await supabase.rpc("create_church", {
+        _name: formData.name.trim(), _city: formData.city.trim() || null,
+        _state: formData.state.trim() || null, _address: formData.address.trim() || null,
+      });
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ["current-church", user.id] });
 
       toast.success("Igreja criada com sucesso! Bem-vindo ao Sirvo!");
       navigate("/dashboard");

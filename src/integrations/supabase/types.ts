@@ -1572,6 +1572,17 @@ export type Database = {
       }
     }
     Functions: {
+      edit_team_user: { Args: { _target: string; _church_id: string; _name: string }; Returns: undefined }
+      remove_team_user: { Args: { _target: string; _church_id: string }; Returns: undefined }
+      get_church_subscription: { Args: { _church_id: string }; Returns: Json }
+      respond_to_swap: { Args: { _request_id: string; _accept: boolean }; Returns: undefined }
+      create_church: {
+        Args: { _name: string; _city?: string | null; _state?: string | null; _address?: string | null }
+        Returns: string
+      }
+      can_administer_church: { Args: { _church_id: string }; Returns: boolean }
+      can_manage_church: { Args: { _church_id: string }; Returns: boolean }
+
       apply_recurring_assignments: {
         Args: { _schedule_id: string }
         Returns: number

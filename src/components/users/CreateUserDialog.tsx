@@ -28,12 +28,12 @@ const createUserSchema = z.object({
 });
 
 interface CreateUserDialogProps {
+  teamOnly?: boolean;
   onSuccess: () => void;
   currentUserCount: number;
-  maxUsers?: number;
 }
 
-export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: CreateUserDialogProps) {
+export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount }: CreateUserDialogProps) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -46,14 +46,15 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
   const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [planName, setPlanName] = useState("Gratuito");
   const { toast } = useToast();
   const { user } = useAuth();
   const { churchId } = useChurchId();
-  const { createCheckout, subscription } = useSubscription();
+  const { createCheckout, subscription, maxUsers, ready, error: subscriptionError, canAddUsers, checkSubscription } = useSubscription();
+  const planNames = { free: "Gratuito", basic: "Básico", standard: "Padrão", premium: "Premium", unlimited: "Ilimitado" };
+  const planName = subscription ? planNames[subscription.plan] : "";
 
-  const canAddMore = currentUserCount < maxUsers;
-  const remainingSlots = maxUsers - currentUserCount;
+  const canAddMore = ready && canAddUsers;
+  const remainingSlots = maxUsers - (subscription?.current_users ?? currentUserCount);
 
   const getNextPlan = () => {
     if (maxUsers <= 3) return { plan: "basic" as const, name: "Básico", users: 10, price: "R$29,90" };
@@ -66,20 +67,10 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
 
   useEffect(() => {
     if (open && churchId) {
-      fetchPlanName();
+      void checkSubscription().catch(() => {});
       fetchMinistries();
     }
   }, [open, churchId]);
-
-  const fetchPlanName = async () => {
-    if (!churchId) return;
-    const { data } = await supabase.from("church_subscriptions").select("plan").eq("church_id", churchId).maybeSingle();
-
-    if (data) {
-      const names = { free: "Gratuito", basic: "Básico", standard: "Standard", premium: "Premium", unlimited: "Ilimitado" };
-      setPlanName(names[data.plan as keyof typeof names] || "Gratuito");
-    }
-  };
 
   const fetchMinistries = async () => {
     if (!churchId) return;
@@ -108,6 +99,11 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canAddMore) return;
+    if (teamOnly && !selectedMinistries.length) {
+      toast({ title: "Selecione um ministério da sua equipe", variant: "destructive" });
+      return;
+    }
 
     const result = createUserSchema.safeParse({ email, fullName, role });
     if (!result.success) {
@@ -134,7 +130,7 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
         body: {
           email,
           fullName,
-          role,
+          role: teamOnly ? "volunteer" : role,
           churchId,
           ministryIds: selectedMinistries,
         },
@@ -234,7 +230,14 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
 
         {/* Corpo Rolável */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 flex flex-col gap-4">
-          {!canAddMore && nextPlan && (
+          {!ready && (
+            <Alert><AlertDescription>
+              {subscriptionError ? "Não foi possível consultar o plano da igreja. Tente novamente." : "Consultando o plano da igreja..."}
+              {subscriptionError && <Button variant="outline" onClick={() => void checkSubscription().catch(() => {})}>Tentar novamente</Button>}
+            </AlertDescription></Alert>
+          )}
+          {ready && <p className="text-sm text-muted-foreground">Plano {planName} · {subscription?.is_unlimited ? "Sem limite de usuários" : `${maxUsers} usuários`}</p>}
+          {ready && !canAddMore && nextPlan && (
             <Alert className="border-primary/30 bg-primary/5 shrink-0">
               <CreditCard className="h-4 w-4 text-primary" />
               <AlertDescription className="flex flex-col gap-3">
@@ -258,7 +261,7 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
             </Alert>
           )}
 
-          {!canAddMore && !nextPlan && (
+          {ready && !canAddMore && !nextPlan && (
             <Alert variant="default" className="shrink-0">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>Você já está no plano máximo. Entre em contato para mais usuários.</AlertDescription>
@@ -315,7 +318,7 @@ export function CreateUserDialog({ onSuccess, currentUserCount, maxUsers = 3 }: 
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Função</Label>
-                <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
+                <Select disabled={teamOnly} value={role} onValueChange={(v) => setRole(v as typeof role)}>
                   <SelectTrigger className="sirvo-input">
                     <SelectValue placeholder="Selecione a função" />
                   </SelectTrigger>

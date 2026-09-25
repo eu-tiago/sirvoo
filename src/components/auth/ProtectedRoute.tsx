@@ -1,3 +1,4 @@
+import { useUserRole } from "@/hooks/useUserRole";
 import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +12,7 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { isSuperAdmin, loading: roleLoading } = useUserRole();
   const [checkingChurch, setCheckingChurch] = useState(true);
   const [hasChurch, setHasChurch] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -22,6 +24,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
 
     const checkChurch = async () => {
+      setCheckingChurch(true);
+      setHasChurch(false);
+      setMustChangePassword(false);
       if (!user) {
         setCheckingChurch(false);
         return;
@@ -47,7 +52,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           return;
         }
 
-        if (membership) {
+        if (membership || isSuperAdmin) {
           setHasChurch(true);
         } else {
           // User has no church, redirect to onboarding
@@ -60,12 +65,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       }
     };
 
-    if (user && !loading) {
+    if (user && !loading && !roleLoading) {
       checkChurch();
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, isSuperAdmin, roleLoading]);
 
-  if (loading || checkingChurch) {
+  if (loading || roleLoading || checkingChurch) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />

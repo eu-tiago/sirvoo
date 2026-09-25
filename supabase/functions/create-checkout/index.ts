@@ -1,3 +1,4 @@
+import { canManageChurch } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
@@ -47,16 +48,30 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
+    if (!churchId || !(await canManageChurch(req, churchId))) {
+      return new Response(JSON.stringify({ error: "Sem permiss?o nesta igreja" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", { 
       apiVersion: "2025-08-27.basil" 
     });
 
-    // Check if customer already exists
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    let customerId;
-    if (customers.data.length > 0) {
-      customerId = customers.data[0].id;
-      logStep("Existing customer found", { customerId });
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: subscription, error: subscriptionError } = await admin.from("church_subscriptions")
+      .select("stripe_customer_id").eq("church_id", churchId).single();
+    if (subscriptionError) throw subscriptionError;
+    let customerId = subscription.stripe_customer_id;
+    if (customerId) {
+      const { count, error } = await admin.from("church_subscriptions")
+        .select("church_id", { count: "exact", head: true }).eq("stripe_customer_id", customerId);
+      if (error || count !== 1) throw new Error("Vínculo financeiro precisa ser revisado pelo Admin Master");
+    }
+    if (!customerId) {
+      const customer = await stripe.customers.create({ email: user.email, metadata: { church_id: churchId } }, { idempotencyKey: `church-customer-${churchId}` });
+      customerId = customer.id;
+      const { error } = await admin.from("church_subscriptions").update({ stripe_customer_id: customerId }).eq("church_id", churchId);
+      if (error) throw error;
     }
 
     const priceId = PRICE_IDS[plan as keyof typeof PRICE_IDS];
@@ -74,6 +89,7 @@ serve(async (req) => {
         },
       ],
       mode: "subscription",
+      subscription_data: { metadata: { church_id: churchId, plan } },
       success_url: `${baseUrl}/dashboard?subscription=success&plan=${plan}`,
       cancel_url: `${baseUrl}/pricing?subscription=canceled`,
       metadata: {

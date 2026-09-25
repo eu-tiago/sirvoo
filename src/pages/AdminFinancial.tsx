@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
-import { isSuperAdminEmail } from "@/lib/superadmin";
+
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   DollarSign, Users, TrendingUp, TrendingDown, RefreshCw, ShieldCheck, Ban,
   FileText, Loader2, ExternalLink, AlertTriangle, Search, CreditCard, Mail,
-  CheckCircle2, XCircle, Clock,
+  CheckCircle2, XCircle, Clock, Trash2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -110,6 +111,10 @@ export default function AdminFinancial() {
   const { user, loading: authLoading } = useAuth();
   const { isSuperAdmin, loading: roleLoading } = useUserRole();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<ChurchRow | null>(null);
+  const [confirmationName, setConfirmationName] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -165,9 +170,9 @@ export default function AdminFinancial() {
   };
 
   useEffect(() => {
-    if (isSuperAdminEmail(user?.email)) fetchData();
+    if (isSuperAdmin) fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email]);
+  }, [isSuperAdmin]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
@@ -201,7 +206,7 @@ export default function AdminFinancial() {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
-  if (!isSuperAdmin || !isSuperAdminEmail(user.email)) return <Navigate to="/dashboard" replace />;
+  if (!isSuperAdmin) return <Navigate to="/dashboard" replace />;
 
   const handleSync = async (church: ChurchRow) => {
     setActionLoading(church.church_id + ":sync");
@@ -216,6 +221,37 @@ export default function AdminFinancial() {
       toast({ title: "Erro ao sincronizar", description: e.message, variant: "destructive" });
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteTarget || deleting || confirmationName !== deleteTarget.church_name) return;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-financial", {
+        body: { action: "delete_church", churchId: deleteTarget.church_id, confirmationName },
+      });
+      if (error) {
+        let message = error.message;
+        if (error.context instanceof Response) {
+          const details = await error.context.json().catch(() => null);
+          message = details?.error || message;
+        }
+        throw new Error(message);
+      }
+      if (!data?.success) throw new Error(data?.error || "Não foi possível excluir a conta.");
+      setRows(current => current.filter(row => row.church_id !== deleteTarget.church_id));
+      setDeleteTarget(null);
+      setConfirmationName("");
+      setPayments(null);
+      toast({ title: "Conta da igreja excluída", description: "Os logins dos usuários foram preservados." });
+      await fetchData();
+      await queryClient.invalidateQueries({ queryKey: ["master-churches"] });
+      await queryClient.invalidateQueries({ queryKey: ["current-church"] });
+    } catch (error) {
+      toast({ title: "Erro ao excluir conta", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -305,6 +341,12 @@ export default function AdminFinancial() {
             : <Ban className="w-4 h-4 text-destructive" />}
         </Button>
       )}
+      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+        disabled={deleting || !!actionLoading}
+        onClick={() => { setDeleteTarget(r); setConfirmationName(""); }}
+        title="Excluir conta da igreja" aria-label={`Excluir conta de ${r.church_name}`}>
+        <Trash2 className="w-4 h-4 mr-1" /> Excluir
+      </Button>
     </div>
   );
 
@@ -418,7 +460,7 @@ export default function AdminFinancial() {
                             </Badge>
                           </TableCell>
                           <TableCell>{renderPaymentStatus(r)}</TableCell>
-                          <TableCell className="text-sm">{r.current_users}/{r.max_users}</TableCell>
+                          <TableCell className="text-sm">{r.current_users}/{r.plan === "unlimited" ? "Ilimitado" : r.max_users}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {fmtDate(r.last_payment_at)}
                           </TableCell>
@@ -576,6 +618,40 @@ export default function AdminFinancial() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir conta da igreja</DialogTitle>
+            <DialogDescription>
+              Esta ação é permanente. A igreja, sua assinatura local, vínculos de membros,
+              ministérios, eventos e escalas serão excluídos. Os logins dos usuários serão preservados.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget?.stripe_customer_id || deleteTarget?.stripe_subscription_id ? (
+            <p className="text-sm text-destructive" role="alert">
+              Esta conta está vinculada ao Stripe. Revise e encerre o vínculo financeiro antes de excluí-la.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <label htmlFor="delete-church-name" className="text-sm">
+                Para confirmar, digite <strong>{deleteTarget?.church_name}</strong>:
+              </label>
+              <Input id="delete-church-name" value={confirmationName} disabled={deleting}
+                autoComplete="off" onChange={event => setConfirmationName(event.target.value)} />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDeleteAccount}
+              disabled={deleting || !deleteTarget || confirmationName !== deleteTarget.church_name
+                || !!deleteTarget.stripe_customer_id || !!deleteTarget.stripe_subscription_id}>
+              {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              {deleting ? "Excluindo..." : "Excluir definitivamente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Override Dialog */}
       <Dialog open={!!overrideTarget} onOpenChange={(o) => !o && setOverrideTarget(null)}>

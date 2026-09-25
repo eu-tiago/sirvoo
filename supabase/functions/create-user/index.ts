@@ -1,3 +1,4 @@
+import { callerPermission } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
@@ -16,6 +17,7 @@ interface CreateUserRequest {
   fullName: string;
   role: "admin" | "ministry_leader" | "volunteer";
   churchId: string;
+  ministryIds?: string[];
 }
 
 serve(async (req) => {
@@ -42,8 +44,14 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated");
     logStep("User authenticated", { userId: user.id });
 
-    const { email, fullName, role, churchId }: CreateUserRequest = await req.json();
-    logStep("Create user request received", { email, role, churchId });
+    const { email, fullName, role, churchId, ministryIds = [] }: CreateUserRequest = await req.json();
+    if (!churchId || !["admin", "ministry_leader", "volunteer"].includes(role)) throw new Error("Dados inv?lidos");
+    if (!(await callerPermission(req, "can_create_church_user", { _church_id: churchId, _role: role, _ministries: ministryIds }))) {
+      return new Response(JSON.stringify({ error: "Sem permiss?o nesta igreja" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
 
     // Check if user can add more users (subscription limit)
     const { data: canAdd, error: canAddError } = await supabaseAdmin
@@ -62,69 +70,20 @@ serve(async (req) => {
       );
     }
 
-    // Check if email already exists (case-insensitive)
+    // Existing accounts must accept an invitation; never attach them by mutable profile email.
     const normalizedEmail = email.trim().toLowerCase();
-    let { data: existingProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .ilike("email", normalizedEmail)
-      .maybeSingle();
-
-    // Fallback: user may exist in auth without a profile row
-    if (!existingProfile) {
-      const { data: list } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      const authUser = list?.users?.find(
-        (u: any) => (u.email ?? "").toLowerCase() === normalizedEmail
-      );
-      if (authUser) {
-        await supabaseAdmin
-          .from("profiles")
-          .upsert({ id: authUser.id, email: normalizedEmail, full_name: fullName }, { onConflict: "id" });
-        existingProfile = { id: authUser.id };
-      }
-    }
-
-
+    const { data: existingProfile } = await supabaseAdmin.from("profiles").select("id").eq("email", normalizedEmail).maybeSingle();
     if (existingProfile) {
-      // Check if already a member of this church
-      const { data: existingMember } = await supabaseAdmin
-        .from("church_members")
-        .select("id")
-        .eq("user_id", existingProfile.id)
-        .eq("church_id", churchId)
-        .maybeSingle();
-
-      if (existingMember) {
-        return new Response(
-          JSON.stringify({ error: "Este usuário já é membro desta igreja" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-        );
-      }
-
-      // Add existing user to church
-      const { error: memberError } = await supabaseAdmin
-        .from("church_members")
-        .insert({
-          user_id: existingProfile.id,
-          church_id: churchId,
-          role: role,
-        });
-
-      if (memberError) throw memberError;
-
-      logStep("Existing user added to church", { userId: existingProfile.id });
-
-      return new Response(
-        JSON.stringify({ success: true, message: "Usuário existente adicionado à igreja", userId: existingProfile.id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-      );
+      return new Response(JSON.stringify({ error: "Utilize um convite para vincular uma conta existente." }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Create new user via Admin API
     const tempPassword = crypto.randomUUID().slice(0, 12);
     
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
+      email: normalizedEmail,
       password: tempPassword,
       email_confirm: true,
       user_metadata: {
@@ -143,39 +102,14 @@ serve(async (req) => {
 
     logStep("User created", { userId: newUser.user.id });
 
-    // Add user to church
-    const { error: memberError } = await supabaseAdmin
-      .from("church_members")
-      .insert({
-        user_id: newUser.user.id,
-        church_id: churchId,
-        role: role,
-      });
-
+    // Membership, ministry links and the temporary-password flag commit together.
+    const { error: memberError } = await supabaseAdmin.rpc("provision_church_user", {
+      _caller: user.id, _user_id: newUser.user.id, _church_id: churchId,
+      _role: role, _ministries: ministryIds,
+    });
     if (memberError) {
-      logStep("Error adding user to church", { error: memberError });
+      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
       throw memberError;
-    }
-
-    // Accounts created with this generated password must choose a personal password on first access.
-    const { error: passwordFlagError } = await supabaseAdmin
-      .from("profiles")
-      .update({ must_change_password: true })
-      .eq("id", newUser.user.id);
-
-    if (passwordFlagError) {
-      logStep("Error marking temporary password", { error: passwordFlagError });
-      throw passwordFlagError;
-    }
-
-    // Update user_roles
-    const { error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .update({ role: role })
-      .eq("user_id", newUser.user.id);
-
-    if (roleError) {
-      logStep("Error updating user role", { error: roleError });
     }
 
     logStep("User created and added to church successfully");

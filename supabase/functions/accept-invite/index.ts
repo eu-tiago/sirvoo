@@ -37,7 +37,7 @@ serve(async (req) => {
 
     const { inviteToken } = await req.json();
     if (!inviteToken) throw new Error("Token de convite não fornecido");
-    logStep("Processing invite token", { inviteToken });
+
 
     // Fetch invitation using service role (bypasses RLS)
     const { data: invitation, error: inviteError } = await supabaseAdmin
@@ -68,7 +68,7 @@ serve(async (req) => {
     }
 
     // Check if already accepted
-    if (invitation.status === "accepted") {
+    if (invitation.status !== "pending") {
       return new Response(
         JSON.stringify({ error: "Este convite já foi aceito", alreadyAccepted: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
@@ -85,7 +85,7 @@ serve(async (req) => {
     // Ensure invitation email matches logged-in user
     const userEmail = (user.email ?? "").trim().toLowerCase();
     const inviteEmail = (invitation.email ?? "").trim().toLowerCase();
-    if (userEmail && inviteEmail && userEmail !== inviteEmail) {
+    if (!user.email_confirmed_at || !userEmail || !inviteEmail || userEmail !== inviteEmail) {
       logStep("Email mismatch", { userEmail, inviteEmail });
       return new Response(
         JSON.stringify({

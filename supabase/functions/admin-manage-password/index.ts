@@ -1,3 +1,4 @@
+import { isMaster, callerPermission } from "../_shared/authorization.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
@@ -10,6 +11,7 @@ interface Payload {
   targetUserId: string;
   newPassword?: string;
   redirectTo?: string;
+  churchId?: string;
 }
 
 const jsonResponse = (body: Record<string, unknown>, status = 200) =>
@@ -41,25 +43,35 @@ serve(async (req) => {
     );
     if (callerError || !caller.user) throw new Error("Não autenticado");
 
-    const { action, targetUserId, newPassword, redirectTo }: Payload = await req.json();
+    const { action, targetUserId, newPassword, redirectTo, churchId }: Payload = await req.json();
     if (!targetUserId) throw new Error("Usuário alvo não informado");
 
     const callerEmail = (caller.user.email ?? "").toLowerCase();
-    const isSuperAdmin = callerEmail === "tiagotalmud@gmail.com";
+    const isSuperAdmin = await isMaster(req);
 
+    let teamReset = false;
     if (!isSuperAdmin) {
       const { data: allowed, error: permError } = await admin.rpc("is_church_admin_of_user", {
         _admin_user_id: caller.user.id,
         _target_user_id: targetUserId,
       });
       if (permError) throw new Error("Erro ao verificar permissão");
-      if (!allowed) {
+      if (!allowed && action === "reset" && churchId) {
+        teamReset = await callerPermission(req, "can_manage_team_user", { _target: targetUserId, _church_id: churchId });
+      }
+      if (!allowed && !teamReset) {
         return jsonResponse({ error: "Sem permissão para gerenciar este usuário" }, 403);
       }
     }
 
     const { data: target, error: targetError } = await admin.auth.admin.getUserById(targetUserId);
     if (targetError || !target.user) throw new Error("Usuário não encontrado");
+
+    const { data: masterTarget } = await admin.from("platform_admin").select("user_id").eq("user_id", targetUserId).maybeSingle();
+    const { data: memberships } = await admin.from("church_members").select("church_id").eq("user_id", targetUserId);
+    if (!isSuperAdmin && (masterTarget || (!teamReset && (memberships?.length ?? 0) > 1))) {
+      return jsonResponse({ error: "Esta conta deve gerenciar sua pr?pria senha" }, 403);
+    }
 
     if (action === "set") {
       if (!newPassword || newPassword.length < 8) {
