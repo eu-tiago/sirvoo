@@ -1,0 +1,61 @@
+    // Supabase Edge Function (Deno)
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// No Deno/Supabase, importamos pacotes NPM usando o prefixo npm:
+import { MercadoPagoConfig, Preference } from 'npm:mercadopago'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Lida com a requisição preflight (CORS) do navegador
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // 1. Inicializa o cliente do Mercado Pago com o seu Access Token
+    const client = new MercadoPagoConfig({ 
+      accessToken: Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') ?? '' 
+    });
+
+    const preference = new Preference(client);
+
+    // 2. Recebe os dados do produto vindos do frontend
+    const { title, price, quantity } = await req.json();
+
+    // 3. Cria a preferência de pagamento
+    const response = await preference.create({
+      body: {
+        items: [
+          {
+            id: 'item-1',
+            title: title || 'Produto Exemplo',
+            quantity: quantity || 1,
+            unit_price: price || 100.00,
+            currency_id: 'BRL',
+          }
+        ],
+        // Opcional: URLs para onde o usuário volta após pagar
+        back_urls: {
+          success: 'http://localhost:5173/sucesso',
+          failure: 'http://localhost:5173/falha',
+          pending: 'http://localhost:5173/pendente'
+        },
+        auto_return: 'approved',
+      }
+    });
+
+    // 4. Retorna o ID da preferência gerada para o React
+    return new Response(
+      JSON.stringify({ preferenceId: response.id }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), { 
+      status: 400, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    })
+  }
+})
