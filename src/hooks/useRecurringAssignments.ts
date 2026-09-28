@@ -10,7 +10,7 @@ export interface RecurringAssignment {
   role_id: string | null;
   weekday: number;
   occurrence: number;
-  time: string | null; // ARQUITETURA: Nova propriedade de horário
+  time: string | null;
   start_date: string | null;
   end_date: string | null;
   active: boolean;
@@ -28,7 +28,7 @@ export interface RecurringInput {
   role_id: string | null;
   weekday: number;
   occurrence: number;
-  time: string | null; // ARQUITETURA: Nova entrada de horário
+  time: string | null;
   start_date: string | null;
   end_date: string | null;
   active?: boolean;
@@ -42,40 +42,64 @@ export function useRecurringAssignments(churchId: string | null) {
 
   const fetch = useCallback(async () => {
     if (!churchId) return;
+
     setLoading(true);
+
     try {
       const { data, error } = await supabase
         .from("recurring_assignments")
         .select("*")
         .eq("church_id", churchId)
         .order("weekday", { ascending: true })
-        .order("time", { ascending: true }) // Ordena pelo horário também
+        .order("time", { ascending: true })
         .order("occurrence", { ascending: true });
+
       if (error) throw error;
 
       const rows = (data || []) as any[];
+
       const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
-      const roleIds = Array.from(new Set(rows.map((r) => r.role_id).filter(Boolean)));
-      const ministryIds = Array.from(new Set(rows.map((r) => r.ministry_id)));
+      const roleIds = Array.from(
+        new Set(rows.map((r) => r.role_id).filter(Boolean)),
+      );
+      const ministryIds = Array.from(
+        new Set(rows.map((r) => r.ministry_id)),
+      );
 
       const [profilesRes, rolesRes, ministriesRes] = await Promise.all([
         userIds.length
-          ? (supabase as any).from("safe_profiles").select("id, full_name").in("id", userIds)
+          ? (supabase as any)
+              .from("safe_profiles")
+              .select("id, full_name")
+              .in("id", userIds)
           : Promise.resolve({ data: [] }),
+
         roleIds.length
           ? supabase
               .from("ministry_roles")
               .select("id, name")
               .in("id", roleIds as string[])
           : Promise.resolve({ data: [] }),
+
         ministryIds.length
-          ? supabase.from("ministries").select("id, name, color").in("id", ministryIds)
+          ? supabase
+              .from("ministries")
+              .select("id, name, color")
+              .in("id", ministryIds)
           : Promise.resolve({ data: [] }),
       ]);
 
-      const nameById = new Map((profilesRes.data || []).map((p: any) => [p.id, p.full_name]));
-      const roleById = new Map((rolesRes.data || []).map((r: any) => [r.id, r.name]));
-      const ministryById = new Map((ministriesRes.data || []).map((m: any) => [m.id, m]));
+      const nameById = new Map(
+        (profilesRes.data || []).map((p: any) => [p.id, p.full_name]),
+      );
+
+      const roleById = new Map(
+        (rolesRes.data || []).map((r: any) => [r.id, r.name]),
+      );
+
+      const ministryById = new Map(
+        (ministriesRes.data || []).map((m: any) => [m.id, m]),
+      );
 
       setItems(
         rows.map((r) => ({
@@ -83,11 +107,13 @@ export function useRecurringAssignments(churchId: string | null) {
           userName: nameById.get(r.user_id) || "Sem nome",
           roleName: r.role_id ? roleById.get(r.role_id) : undefined,
           ministryName: ministryById.get(r.ministry_id)?.name || "",
-          ministryColor: ministryById.get(r.ministry_id)?.color || "#5B7BFF",
+          ministryColor:
+            ministryById.get(r.ministry_id)?.color || "#5B7BFF",
         })),
       );
     } catch (error: any) {
       console.error("Error fetching recurring assignments:", error);
+
       toast({
         title: "Erro ao carregar escalas fixas",
         description: error.message,
@@ -104,7 +130,9 @@ export function useRecurringAssignments(churchId: string | null) {
 
   const save = async (input: RecurringInput) => {
     if (!churchId) return false;
+
     setSaving(true);
+
     try {
       const payload = {
         church_id: churchId,
@@ -113,48 +141,87 @@ export function useRecurringAssignments(churchId: string | null) {
         role_id: input.role_id,
         weekday: input.weekday,
         occurrence: input.occurrence,
-        time: input.time, // Adicionando o horário no envio para o banco
+        time: input.time,
         start_date: input.start_date,
         end_date: input.end_date,
         active: input.active ?? true,
       };
 
+      /*
+       * EDIÇÃO
+       *
+       * Quando existe ID, atualizamos diretamente o registro informado.
+       * O PostgreSQL continua responsável por impedir conflitos com
+       * outra combinação já existente.
+       */
       if (input.id) {
-        const { error } = await supabase.from("recurring_assignments").update(payload).eq("id", input.id);
+        const { error } = await supabase
+          .from("recurring_assignments")
+          .update(payload)
+          .eq("id", input.id);
+
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("recurring_assignments").insert(payload);
+        /*
+         * NOVO REGISTRO
+         *
+         * A chave UNIQUE real do banco é:
+         *
+         * church_id
+         * ministry_id
+         * user_id
+         * weekday
+         * occurrence
+         *
+         * role_id e time NÃO fazem parte da unicidade.
+         */
+        const { error } = await supabase
+          .from("recurring_assignments")
+          .insert(payload);
+
         if (error) {
-          // duplicidade -> atualiza o registro equivalente existente
+          /*
+           * PostgreSQL: unique_violation
+           */
           if ((error as any).code === "23505") {
             const existing = items.find(
               (i) =>
+                i.church_id === payload.church_id &&
                 i.ministry_id === payload.ministry_id &&
                 i.user_id === payload.user_id &&
-                (i.role_id || null) === (payload.role_id || null) &&
                 i.weekday === payload.weekday &&
-                i.occurrence === payload.occurrence &&
-                (i.time || null) === (payload.time || null), // Valida se é no mesmo horário
+                i.occurrence === payload.occurrence,
             );
+
             if (existing) {
               const { error: upErr } = await supabase
                 .from("recurring_assignments")
                 .update(payload)
                 .eq("id", existing.id);
+
               if (upErr) throw upErr;
+
               toast({
                 title: "Escala fixa atualizada",
-                description: "Já existia uma escala igual — ela foi atualizada.",
+                description:
+                  "Já existia uma escala para essa combinação — ela foi atualizada.",
               });
+
               await fetch();
               return true;
             }
           }
+
           throw error;
         }
       }
 
-      toast({ title: input.id ? "Escala fixa atualizada" : "Escala fixa criada" });
+      toast({
+        title: input.id
+          ? "Escala fixa atualizada"
+          : "Escala fixa criada",
+      });
+
       await fetch();
       return true;
     } catch (error: any) {
@@ -163,6 +230,7 @@ export function useRecurringAssignments(churchId: string | null) {
         description: error.message,
         variant: "destructive",
       });
+
       return false;
     } finally {
       setSaving(false);
@@ -171,36 +239,62 @@ export function useRecurringAssignments(churchId: string | null) {
 
   const remove = async (id: string) => {
     try {
-      const { error } = await supabase.from("recurring_assignments").delete().eq("id", id);
+      const { error } = await supabase
+        .from("recurring_assignments")
+        .delete()
+        .eq("id", id);
+
       if (error) throw error;
+
       toast({ title: "Escala fixa removida" });
+
       await fetch();
     } catch (error: any) {
-      toast({ title: "Erro ao remover", description: error.message, variant: "destructive" });
+      toast({
+        title: "Erro ao remover",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
   const toggleActive = async (id: string, active: boolean) => {
     try {
-      const { error } = await supabase.from("recurring_assignments").update({ active }).eq("id", id);
+      const { error } = await supabase
+        .from("recurring_assignments")
+        .update({ active })
+        .eq("id", id);
+
       if (error) throw error;
+
       await fetch();
     } catch (error: any) {
-      toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" });
+      toast({
+        title: "Erro ao atualizar",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
   /** Aplica as escalas fixas às escalas já existentes de um período */
   const syncRange = async (from: string, to: string) => {
     if (!churchId) return 0;
+
     try {
-      const { data, error } = await supabase.rpc("sync_recurring_for_range", {
-        _church_id: churchId,
-        _from: from,
-        _to: to,
-      });
+      const { data, error } = await supabase.rpc(
+        "sync_recurring_for_range",
+        {
+          _church_id: churchId,
+          _from: from,
+          _to: to,
+        },
+      );
+
       if (error) throw error;
+
       const count = (data as number) || 0;
+
       toast({
         title: "Sincronização concluída",
         description:
@@ -208,6 +302,7 @@ export function useRecurringAssignments(churchId: string | null) {
             ? `${count} escalação(ões) criada(s) a partir das escalas fixas.`
             : "Nenhuma nova escalação necessária.",
       });
+
       return count;
     } catch (error: any) {
       toast({
@@ -215,9 +310,19 @@ export function useRecurringAssignments(churchId: string | null) {
         description: error.message,
         variant: "destructive",
       });
+
       return 0;
     }
   };
 
-  return { items, loading, saving, refetch: fetch, save, remove, toggleActive, syncRange };
+  return {
+    items,
+    loading,
+    saving,
+    refetch: fetch,
+    save,
+    remove,
+    toggleActive,
+    syncRange,
+  };
 }
