@@ -51,10 +51,23 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
   const { churchId } = useChurchId();
   const { createCheckout, subscription, maxUsers, ready, error: subscriptionError, canAddUsers, checkSubscription } = useSubscription();
   const planNames = { free: "Gratuito", basic: "Básico", standard: "Padrão", premium: "Premium", unlimited: "Ilimitado" };
-  const planName = subscription ? planNames[subscription.plan] : "";
 
-  const canAddMore = ready && canAddUsers;
-  const remainingSlots = maxUsers - (subscription?.current_users ?? currentUserCount);
+  // ✅ Fallback: nunca imprime "no plano ." quando a consulta falha
+  const planName = subscription ? planNames[subscription.plan] : "atual";
+
+  // ✅ FAIL-OPEN: se a consulta do plano falhou, NÃO bloqueamos o cadastro.
+  // O backend (edge function create-user) revalida o limite com service role,
+  // então ele é a autoridade final — o frontend só bloqueia quando tem
+  // certeza (ready && !canAddUsers), não quando ficou "cego".
+  const planUnknown = !!subscriptionError;
+  const canAddMore = planUnknown ? true : ready && canAddUsers;
+
+  // ✅ Cálculo seguro: só faz sentido quando temos dados reais do plano.
+  // Quando o plano é desconhecido (ou ilimitado sem número), fica como null.
+  const remainingSlots: number | null =
+    !planUnknown && ready && Number.isFinite(maxUsers)
+      ? maxUsers - (subscription?.current_users ?? currentUserCount)
+      : null;
 
   const getNextPlan = () => {
     if (maxUsers <= 3) return { plan: "basic" as const, name: "Básico", users: 10, price: "R$29,90" };
@@ -230,14 +243,33 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
 
         {/* Corpo Rolável */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 flex flex-col gap-4">
-          {!ready && (
-            <Alert><AlertDescription>
-              {subscriptionError ? "Não foi possível consultar o plano da igreja. Tente novamente." : "Consultando o plano da igreja..."}
-              {subscriptionError && <Button variant="outline" onClick={() => void checkSubscription().catch(() => {})}>Tentar novamente</Button>}
-            </AlertDescription></Alert>
+          {/* ✅ Erro de consulta = aviso informativo (NÃO-bloqueante) */}
+          {planUnknown && (
+            <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400 shrink-0">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Não foi possível exibir as informações do plano. Você ainda pode criar o usuário — o limite será
+                verificado automaticamente ao salvar.
+              </AlertDescription>
+            </Alert>
           )}
-          {ready && <p className="text-sm text-muted-foreground">Plano {planName} · {subscription?.is_unlimited ? "Sem limite de usuários" : `${maxUsers} usuários`}</p>}
-          {ready && !canAddMore && nextPlan && (
+
+          {/* Carregando (apenas enquanto não houve erro) */}
+          {!ready && !planUnknown && (
+            <Alert>
+              <AlertDescription>Consultando o plano da igreja...</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Resumo do plano (só quando carregado com sucesso) */}
+          {ready && !planUnknown && (
+            <p className="text-sm text-muted-foreground">
+              Plano {planName} · {subscription?.is_unlimited ? "Sem limite de usuários" : `${maxUsers} usuários`}
+            </p>
+          )}
+
+          {/* ✅ Alertas de limite/upgrade apenas com dados reais do plano */}
+          {ready && !planUnknown && !canAddMore && nextPlan && (
             <Alert className="border-primary/30 bg-primary/5 shrink-0">
               <CreditCard className="h-4 w-4 text-primary" />
               <AlertDescription className="flex flex-col gap-3">
@@ -261,14 +293,15 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
             </Alert>
           )}
 
-          {ready && !canAddMore && !nextPlan && (
+          {ready && !planUnknown && !canAddMore && !nextPlan && (
             <Alert variant="default" className="shrink-0">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>Você já está no plano máximo. Entre em contato para mais usuários.</AlertDescription>
             </Alert>
           )}
 
-          {canAddMore && remainingSlots <= 2 && (
+          {/* ✅ Vagas restantes: só exibe quando remainingSlots é um número real e positivo */}
+          {remainingSlots !== null && remainingSlots > 0 && remainingSlots <= 2 && (
             <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400 shrink-0">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
@@ -332,7 +365,6 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
 
               <div className="space-y-2 pt-2 border-t">
                 <Label>Vincular Ministérios</Label>
-                {/* Removido o max-h e overflow daqui, para rolar livremente com a tela */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 border rounded-md bg-muted/20">
                   {ministries.map((ministry) => (
                     <div key={ministry.id} className="flex items-center space-x-2">
@@ -374,7 +406,7 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
               <Button
                 type="submit"
                 form="create-user-form"
-                disabled={loading || (!canAddMore && !tempPassword)}
+                disabled={loading || !canAddMore}
                 className="sirvo-btn-primary"
               >
                 {loading ? "Criando..." : "Criar Usuário"}
