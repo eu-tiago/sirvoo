@@ -13,8 +13,51 @@ import { useMinistries } from "@/hooks/useMinistries";
 import { useRecurringAssignments, type RecurringAssignment } from "@/hooks/useRecurringAssignments";
 import { RecurringAssignmentDialog } from "./RecurringAssignmentDialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner"; // Adicionado para notificações
+import { toast } from "sonner";
 
+// ─────────────────────────────────────────────────────────────
+// Agrupa as linhas do dia em: Horário → Ministério → Voluntários
+// ─────────────────────────────────────────────────────────────
+function groupByTimeAndMinistry(rows: RecurringAssignment[]) {
+  // 1º nível: agrupa por horário
+  const timeMap = new Map<string, RecurringAssignment[]>();
+
+  for (const row of rows) {
+    const time = row.time ? row.time.substring(0, 5) : "Sem horário";
+    if (!timeMap.has(time)) timeMap.set(time, []);
+    timeMap.get(time)!.push(row);
+  }
+
+  return Array.from(timeMap.entries())
+    .sort(([a], [b]) => {
+      if (a === "Sem horário") return 1;
+      if (b === "Sem horário") return -1;
+      return a.localeCompare(b); // ordena cronologicamente
+    })
+    .map(([time, timeRows]) => {
+      // 2º nível: dentro de cada horário, agrupa por ministério
+      const ministryMap = new Map<string, RecurringAssignment[]>();
+      for (const row of timeRows) {
+        const ministry = row.ministryName || "Sem ministério";
+        if (!ministryMap.has(ministry)) ministryMap.set(ministry, []);
+        ministryMap.get(ministry)!.push(row);
+      }
+
+      return {
+        time,
+        total: timeRows.length,
+        ministries: Array.from(ministryMap.entries())
+          .map(([ministryName, ministryRows]) => ({
+            ministryName,
+            color: ministryRows[0]?.ministryColor,
+            rows: [...ministryRows].sort((a, b) =>
+              (a.userName || "").localeCompare(b.userName || ""),
+            ),
+          }))
+          .sort((a, b) => a.ministryName.localeCompare(b.ministryName)),
+      };
+    });
+}
 
 interface Props {
   churchId: string | null;
@@ -170,70 +213,110 @@ export function RecurringScheduleConfig({
       <div className="space-y-4">
         {visible.length > 0 && (
           <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b">
-                <h3 className="text-base font-bold text-foreground">Escalas semanais</h3>
-                <Badge variant="secondary">{visible.length} voluntário(s)</Badge>
-              </div>
-              <div className="space-y-4">
-                {Array.from(new Set(visible.map((r) => r.weekday)))
-                  .sort((a, b) => a - b)
-                  .map((wDay) => {
-                    const dayName = WEEKDAYS.find((w) => w.value === wDay)?.label || "Dia";
-                    const dayRows = visible.filter((r) => r.weekday === wDay);
+            <div className="flex items-center justify-between mb-4 pb-3 border-b">
+              <h3 className="text-base font-bold text-foreground">Escalas semanais</h3>
+              <Badge variant="secondary">{visible.length} voluntário(s)</Badge>
+            </div>
+            <div className="space-y-4">
+              {Array.from(new Set(visible.map((r) => r.weekday)))
+                .sort((a, b) => a - b)
+                .map((wDay) => {
+                  const dayName = WEEKDAYS.find((w) => w.value === wDay)?.label || "Dia";
+                  const dayRows = visible.filter((r) => r.weekday === wDay);
+                  const timeGroups = groupByTimeAndMinistry(dayRows);
 
-                    return (
-                      <div key={wDay} className="rounded-xl border bg-muted/20 p-3 space-y-2">
-                        <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground border-b pb-2">
-                          <span className="flex items-center gap-1.5 text-foreground font-medium">📅 {dayName}</span>
-                        </div>
-                        <div className="space-y-2 pt-1">
-                          {dayRows.map((item) => (
+                  return (
+                    <div key={wDay} className="rounded-xl border bg-muted/20 p-3 space-y-3">
+                      {/* Cabeçalho do dia */}
+                      <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground border-b pb-2">
+                        <span className="flex items-center gap-1.5 text-foreground font-medium">
+                          📅 {dayName}
+                        </span>
+                        <span>{dayRows.length} voluntário(s)</span>
+                      </div>
+
+                      {/* Nível 1: HORÁRIO */}
+                      {timeGroups.map((timeGroup) => (
+                        <div key={timeGroup.time} className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">🕒 {timeGroup.time}</span>
+                            <span className="text-xs text-muted-foreground">({timeGroup.total})</span>
+                          </div>
+
+                          {/* Nível 2: MINISTÉRIO */}
+                          {timeGroup.ministries.map((ministryGroup) => (
                             <div
-                              key={item.id}
-                              className="flex items-center gap-3 p-2.5 rounded-xl bg-card border shadow-sm"
+                              key={`${timeGroup.time}-${ministryGroup.ministryName}`}
+                              className="rounded-lg border border-border/60 bg-card/60 p-2 space-y-2"
                             >
-                              <div
-                                className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold text-primary-foreground"
-                                style={{ backgroundColor: item.ministryColor }}
-                              >
-                                {getInitials(item.userName || "")}
+                              <div className="flex items-center gap-2 border-b border-dashed pb-1.5">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: ministryGroup.color }}
+                                />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  {ministryGroup.ministryName}
+                                </span>
+                                <span className="ml-auto text-xs text-muted-foreground">
+                                  {ministryGroup.rows.length}
+                                </span>
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-foreground truncate">{item.userName}</p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {item.ministryName} {item.roleName ? ` • ${item.roleName}` : ""}{" "}
-                                  {item.time ? ` • 🕒 ${item.time.substring(0, 5)}` : ""}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Switch checked={item.active} onCheckedChange={(v) => toggleActive(item.id, v)} />
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setEditing(item);
-                                    setShowDialog(true);
-                                  }}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => remove(item.id)}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+
+                              {/* Cards de voluntários */}
+                              <div className="space-y-2 pt-1">
+                                {ministryGroup.rows.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center gap-3 p-2.5 rounded-xl bg-card border shadow-sm"
+                                  >
+                                    <div
+                                      className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold text-primary-foreground"
+                                      style={{ backgroundColor: item.ministryColor }}
+                                    >
+                                      {getInitials(item.userName || "")}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium text-foreground truncate">{item.userName}</p>
+                                      {item.roleName && (
+                                        <p className="text-xs text-muted-foreground truncate">{item.roleName}</p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Switch
+                                        checked={item.active}
+                                        onCheckedChange={(v) => toggleActive(item.id, v)}
+                                      />
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          setEditing(item);
+                                          setShowDialog(true);
+                                        }}
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => remove(item.id)}
+                                        className="text-destructive"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    );
-                  })}
-              </div>
+                      ))}
+                    </div>
+                  );
+                })}
             </div>
+          </div>
         )}
       </div>
       <RecurringAssignmentDialog
