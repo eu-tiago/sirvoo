@@ -52,18 +52,18 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
   const { createCheckout, subscription, maxUsers, ready, error: subscriptionError, canAddUsers, checkSubscription } = useSubscription();
   const planNames = { free: "Gratuito", basic: "Básico", standard: "Padrão", premium: "Premium", unlimited: "Ilimitado" };
 
-  // ✅ Fallback: nunca imprime "no plano ." quando a consulta falha
+  // Fallback: nunca imprime "no plano ." quando a consulta falha
   const planName = subscription ? planNames[subscription.plan] : "atual";
 
-  // ✅ FAIL-OPEN: se a consulta do plano falhou, NÃO bloqueamos o cadastro.
+  // FAIL-OPEN: se a consulta do plano falhou, NÃO bloqueamos o cadastro.
   // O backend (edge function create-user) revalida o limite com service role,
   // então ele é a autoridade final — o frontend só bloqueia quando tem
   // certeza (ready && !canAddUsers), não quando ficou "cego".
   const planUnknown = !!subscriptionError;
   const canAddMore = planUnknown ? true : ready && canAddUsers;
 
-  // ✅ Cálculo seguro: só faz sentido quando temos dados reais do plano.
-  // Quando o plano é desconhecido (ou ilimitado sem número), fica como null.
+  // Cálculo seguro: só faz sentido quando temos dados reais do plano.
+  // Quando o plano é desconhecido, fica como null (nunca exibe valores fantasmas).
   const remainingSlots: number | null =
     !planUnknown && ready && Number.isFinite(maxUsers)
       ? maxUsers - (subscription?.current_users ?? currentUserCount)
@@ -85,8 +85,52 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
     }
   }, [open, churchId]);
 
+  // ─────────────────────────────────────────────────────────────
+  // LÍDER: busca apenas os ministérios que ele lidera nesta
+  // igreja — mesma query usada na página de Usuários
+  // (ministry_members.is_leader + join com ministries por church_id).
+  // Admin (sem teamOnly): continua vendo todos os ministérios.
+  // ─────────────────────────────────────────────────────────────
   const fetchMinistries = async () => {
     if (!churchId) return;
+
+    if (teamOnly && user?.id) {
+      // Ministérios liderados pelo usuário nesta igreja
+      const { data: led, error: ledError } = await supabase
+        .from("ministry_members")
+        .select("ministry_id, ministries!inner(church_id)")
+        .eq("user_id", user.id)
+        .eq("is_leader", true)
+        .eq("ministries.church_id", churchId);
+
+      if (ledError) {
+        console.error("Erro ao buscar ministérios liderados:", ledError);
+        setMinistries([]);
+        return;
+      }
+
+      if (led && led.length > 0) {
+        const ids = led.map((item: any) => item.ministry_id);
+        const { data: mins, error: minsError } = await supabase
+          .from("ministries")
+          .select("id, name")
+          .in("id", ids)
+          .order("name");
+
+        if (!minsError && mins) {
+          setMinistries(mins);
+          // Se lidera apenas um ministério, já pré-seleciona
+          if (mins.length === 1) setSelectedMinistries([mins[0].id]);
+        }
+        return;
+      }
+
+      // Líder sem ministério → lista vazia (mensagem específica no JSX)
+      setMinistries([]);
+      return;
+    }
+
+    // Admin / fluxo completo: todos os ministérios da igreja
     const { data, error } = await supabase
       .from("ministries")
       .select("id, name")
@@ -237,13 +281,15 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
           <DialogDescription>
-            Crie uma conta para um novo membro diretamente. Ele receberá uma senha temporária para acessar o sistema.
+            {teamOnly
+              ? "Crie uma conta para um novo voluntário da sua equipe. Ele receberá uma senha temporária para acessar o sistema."
+              : "Crie uma conta para um novo membro diretamente. Ele receberá uma senha temporária para acessar o sistema."}
           </DialogDescription>
         </DialogHeader>
 
         {/* Corpo Rolável */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 flex flex-col gap-4">
-          {/* ✅ Erro de consulta = aviso informativo (NÃO-bloqueante) */}
+          {/* Erro de consulta do plano = aviso informativo (NÃO-bloqueante) */}
           {planUnknown && (
             <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400 shrink-0">
               <AlertCircle className="h-4 w-4" />
@@ -268,7 +314,7 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
             </p>
           )}
 
-          {/* ✅ Alertas de limite/upgrade apenas com dados reais do plano */}
+          {/* Alertas de limite/upgrade apenas com dados reais do plano */}
           {ready && !planUnknown && !canAddMore && nextPlan && (
             <Alert className="border-primary/30 bg-primary/5 shrink-0">
               <CreditCard className="h-4 w-4 text-primary" />
@@ -300,7 +346,7 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
             </Alert>
           )}
 
-          {/* ✅ Vagas restantes: só exibe quando remainingSlots é um número real e positivo */}
+          {/* Vagas restantes: só exibe quando remainingSlots é um número real e positivo */}
           {remainingSlots !== null && remainingSlots > 0 && remainingSlots <= 2 && (
             <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400 shrink-0">
               <AlertCircle className="h-4 w-4" />
@@ -364,7 +410,7 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
               </div>
 
               <div className="space-y-2 pt-2 border-t">
-                <Label>Vincular Ministérios</Label>
+                <Label>{teamOnly ? "Sua Equipe" : "Vincular Ministérios"}</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 border rounded-md bg-muted/20">
                   {ministries.map((ministry) => (
                     <div key={ministry.id} className="flex items-center space-x-2">
@@ -383,7 +429,9 @@ export function CreateUserDialog({ teamOnly = false, onSuccess, currentUserCount
                   ))}
                   {ministries.length === 0 && (
                     <p className="text-sm text-muted-foreground col-span-2">
-                      Nenhum ministério encontrado para esta igreja.
+                      {teamOnly
+                        ? "Nenhum ministério liderado por você foi encontrado. Solicite ao administrador que o vincule como líder do ministério."
+                        : "Nenhum ministério encontrado para esta igreja."}
                     </p>
                   )}
                 </div>
